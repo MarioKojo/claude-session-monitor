@@ -31,6 +31,7 @@ chmod +x claude-wrapper.sh claude-sessions.sh
 # Add to your ~/.zshrc (both lines are required):
 export PATH="$HOME/Documents/GitHub/claude-session-monitor:$PATH"
 alias claude="claude-wrapper.sh"
+alias cs="claude-sessions"
 ```
 
 Then reload your shell:
@@ -67,27 +68,29 @@ Sessions without a resume message (e.g., quick `/exit` with no interaction) are 
 
 ```bash
 # List all sessions (default command)
-claude-sessions
-claude-sessions list
+cs
+cs list
 
 # Show last N sessions (default: 5)
-claude-sessions last
-claude-sessions last 10
+cs last
+cs last 10
 
 # Search sessions by keyword (case-insensitive, searches name + description)
-claude-sessions search "database"
+cs search "database"
 
 # Resume Nth most recent session (1 = most recent)
 # Automatically cd's to the original project directory
-claude-sessions resume 1
-claude-sessions resume 3
+cs resume 1
+cs resume 3
 
 # Clear all logs (with confirmation)
-claude-sessions clear
+cs clear
 
 # Show help
-claude-sessions help
+cs help
 ```
+
+`cs` is an alias for `claude-sessions`. Both work interchangeably.
 
 ## Configuration
 
