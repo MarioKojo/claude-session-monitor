@@ -4,14 +4,12 @@
 # Captures Claude's exit message via script() to reliably extract the session ID
 # Requires Full Disk Access for the terminal app (one-time macOS setup)
 
-LOG_FILE="${CLAUDE_SESSION_LOG:-$HOME/.claude-sessions.log}"
 PROMPT_FOR_CONTEXT="${CLAUDE_PROMPT_CONTEXT:-true}"
-CLAUDE_HISTORY="$HOME/.claude/history.jsonl"
-CLAUDE_PROJECTS_DIR="$HOME/.claude/projects"
 
-get_custom_title() {
-    jq -r 'select(has("customTitle")) | .customTitle' "$1" 2>/dev/null | tail -1
-}
+# Source shared functions (add_session_to_log, UUID_REGEX, etc.)
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# Only source function definitions, skip the case dispatcher
+eval "$(sed '/^# Main command dispatcher$/,$d' "$SCRIPT_DIR/claude-sessions.sh")"
 
 # Find the real claude binary (not this wrapper)
 REAL_CLAUDE=$(which -a claude | grep -v claude-wrapper | head -1)
@@ -62,8 +60,7 @@ trap - EXIT
 if [[ -n "$RESUME_VALUE" ]]; then
     PROJECT_KEY=$(pwd | sed 's|/|-|g')
 
-    # Determine if RESUME_VALUE is a UUID or a display name
-    UUID_REGEX='^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
+    # Determine if RESUME_VALUE is a UUID or a display name (UUID_REGEX from claude-sessions.sh)
     if [[ "$RESUME_VALUE" =~ $UUID_REGEX ]]; then
         SESSION_ID="$RESUME_VALUE"
         SESSION_NAME=""
@@ -86,8 +83,6 @@ if [[ -n "$RESUME_VALUE" ]]; then
         SESSION_ID="$RESUME_VALUE"
     fi
 
-    RESUME_CMD="claude --resume $SESSION_ID"
-
     # Look up the project directory from Claude's history
     PROJECT_DIR=""
     if [[ -f "$CLAUDE_HISTORY" ]]; then
@@ -107,14 +102,7 @@ if [[ -n "$RESUME_VALUE" ]]; then
         fi
     fi
 
-    TIMESTAMP=$(date '+%Y-%m-%d %H:%M:%S')
-
-    # Ensure log file exists as JSON array
-    if [[ ! -s "$LOG_FILE" ]]; then
-        echo '[]' > "$LOG_FILE"
-    fi
-
-    # Look up existing description once (used for display and fallback)
+    # Look up existing description (used for display and fallback)
     EXISTING_DESC=$(jq -r --arg session "$SESSION_ID" '.[] | select(.session == $session) | .description // empty' "$LOG_FILE" 2>/dev/null | head -1)
 
     DESCRIPTION=""
@@ -140,32 +128,8 @@ if [[ -n "$RESUME_VALUE" ]]; then
         DESCRIPTION="$EXISTING_DESC"
     fi
 
-    # Remove old entry for this session, then append updated one
-    LOCK_FILE="${LOG_FILE}.lock"
-    TEMP_LOG=$(mktemp)
-    trap 'rm -f "$TEMP_LOG" "$LOCK_FILE"' EXIT
-
-    # Simple spin lock (wait up to 5 seconds)
-    for i in $(seq 1 50); do
-        if (set -o noclobber; echo $$ > "$LOCK_FILE") 2>/dev/null; then
-            break
-        fi
-        sleep 0.1
-    done
-
-    jq --arg session "$SESSION_ID" 'map(select(.session != $session))' "$LOG_FILE" > "$TEMP_LOG" 2>/dev/null || echo '[]' > "$TEMP_LOG"
-
-    jq --arg timestamp "$TIMESTAMP" \
-       --arg session "$SESSION_ID" \
-       --arg resume "$RESUME_CMD" \
-       --arg desc "$DESCRIPTION" \
-       --arg project "$PROJECT_DIR" \
-       --arg name "$SESSION_NAME" \
-       '. += [{timestamp: $timestamp, session: $session, session_name: $name, resume_cmd: $resume, description: $desc, project: $project}]' \
-       "$TEMP_LOG" > "$LOG_FILE"
-
-    rm -f "$TEMP_LOG" "$LOCK_FILE"
-    trap - EXIT
+    # Write to log (add_session_to_log from claude-sessions.sh handles locking)
+    add_session_to_log "$SESSION_ID" "$SESSION_NAME" "$PROJECT_DIR" "$DESCRIPTION"
 
     echo "✅ Session logged to $LOG_FILE"
 fi

@@ -10,6 +10,12 @@ CLAUDE_HISTORY="$HOME/.claude/history.jsonl"
 # Shared jq format for displaying a session entry
 SESSION_FMT='"━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\nTimestamp: \(.timestamp)" + (if (.session_name // "") != "" then "\nName: \(.session_name)" else "" end) + "\nSession: \(.session)\nResume cmd: \(.resume_cmd)" + (if (.project // "") != "" then "\nProject: \(.project)" else "" end) + (if (.description // "") != "" then "\nDescription: \(.description)" else "" end) + "\n"'
 
+UUID_REGEX='^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
+
+get_custom_title() {
+    jq -r 'select(has("customTitle")) | .customTitle' "$1" 2>/dev/null | tail -1
+}
+
 show_help() {
     cat << EOF
 Claude Sessions Manager
@@ -112,40 +118,43 @@ resume_session() {
 
 get_session_preview() {
     local transcript="$1"
+    local project_lookup="$2"  # optional: pre-built "sid<TAB>project" TSV file
     local sid=$(basename "$transcript" .jsonl)
-    local title=$(jq -r 'select(has("customTitle")) | .customTitle' "$transcript" 2>/dev/null | tail -1)
-    # Extract first user message — handle both string and object formats
-    local first_msg=$(jq -r '
-        select(.type == "user" and .message != null) |
-        if (.message | type) == "string" then .message[:80]
-        elif (.message.content | type) == "string" then .message.content[:80]
-        elif (.message.content | type) == "array" then
-            (.message.content[] | select(type == "string" or .type == "text") |
-            if type == "string" then .[:80] else .text[:80] end) // empty
-        else empty end
-    ' "$transcript" 2>/dev/null | head -1)
-    local ts=$(jq -r 'select(.type == "user" and .timestamp != null) | .timestamp' "$transcript" 2>/dev/null | head -1)
-    local date_str=""
-    if [[ -n "$ts" ]]; then
-        date_str=$(echo "$ts" | sed 's/T/ /;s/\..*//')
-    fi
-    local project_dir=""
-    if [[ -f "$CLAUDE_HISTORY" ]]; then
-        project_dir=$(jq -r --arg sid "$sid" 'select(.sessionId == $sid) | .project // empty' "$CLAUDE_HISTORY" 2>/dev/null | head -1)
-    fi
-    # Strip system-injected prefixes; skip caveat messages
-    first_msg=$(echo "$first_msg" | sed 's/<[^>]*>//g' | sed 's/^[[:space:]]*//')
-    if [[ "$first_msg" == Caveat:* ]]; then
-        first_msg=$(jq -r '
-            select(.type == "user" and .message != null) |
+
+    # Single jq pass: extract customTitle, first non-caveat user message, and timestamp
+    # Replaces 3-4 separate jq invocations that each re-parsed the entire transcript
+    local extracted
+    extracted=$(jq -r --slurp '
+        def extract_msg:
             if (.message | type) == "string" then .message[:80]
             elif (.message.content | type) == "string" then .message.content[:80]
             elif (.message.content | type) == "array" then
-                (.message.content[] | select(type == "string" or .type == "text") |
-                if type == "string" then .[:80] else .text[:80] end) // empty
-            else empty end
-        ' "$transcript" 2>/dev/null | sed 's/<[^>]*>//g;s/^[[:space:]]*//' | grep -v "^Caveat:" | head -1)
+                (first(.message.content[] | select(type == "string" or .type == "text") |
+                if type == "string" then .[:80] else .text[:80] end)) // null
+            else null end;
+        def strip_tags: gsub("<[^>]*>"; "") | gsub("\\\\n"; " ") | gsub("^ +"; "");
+        def is_noise: startswith("Caveat:") or startswith("/") or startswith("[Request interrupted") or (length < 20);
+        ((last(.[] | select(has("customTitle"))) | .customTitle) // "") as $title |
+        ((first(.[] | select(.type == "user" and .message != null) |
+            extract_msg // empty | strip_tags |
+            select(is_noise | not) | select(length > 3))) // "") as $msg |
+        ((first(.[] | select(.type == "user" and .timestamp != null) | .timestamp) // "")) as $ts |
+        [$title, $msg, ($ts | gsub("T"; " ") | gsub("\\.[0-9]+.*"; ""))] | @tsv
+    ' "$transcript" 2>/dev/null) || return 1
+
+    local title first_msg date_str
+    title=$(printf '%s' "$extracted" | cut -f1)
+    first_msg=$(printf '%s' "$extracted" | cut -f2)
+    date_str=$(printf '%s' "$extracted" | cut -f3)
+
+    # Look up project_dir from pre-built map (avoids re-scanning history.jsonl per transcript)
+    local project_dir=""
+    if [[ -n "$project_lookup" && -f "$project_lookup" ]]; then
+        project_dir=$(grep "^${sid}	" "$project_lookup" 2>/dev/null | cut -f2 | head -1)
+    elif [[ -f "$CLAUDE_HISTORY" ]]; then
+        project_dir=$(jq -r --arg sid "$sid" 'select(.sessionId == $sid) | .project // empty' "$CLAUDE_HISTORY" 2>/dev/null | head -1)
     fi
+
     local label="${title:-$first_msg}"
     [[ -z "$label" ]] && return 1
     echo "${date_str}|${sid}|${title}|${label:0:70}|${project_dir}"
@@ -160,7 +169,17 @@ add_session_to_log() {
         echo '[]' > "$LOG_FILE"
     fi
 
+    local lock_file="${LOG_FILE}.lock"
     local temp_log=$(mktemp)
+
+    # Simple spin lock (wait up to 5 seconds)
+    for i in $(seq 1 50); do
+        if (set -o noclobber; echo $$ > "$lock_file") 2>/dev/null; then
+            break
+        fi
+        sleep 0.1
+    done
+
     jq --arg session "$session_id" 'map(select(.session != $session))' "$LOG_FILE" > "$temp_log" 2>/dev/null || echo '[]' > "$temp_log"
 
     jq --arg timestamp "$timestamp" \
@@ -172,14 +191,13 @@ add_session_to_log() {
        '. += [{timestamp: $timestamp, session: $session, session_name: $name, resume_cmd: $resume, description: $desc, project: $project}]' \
        "$temp_log" > "$LOG_FILE"
 
-    rm -f "$temp_log"
+    rm -f "$temp_log" "$lock_file"
 }
 
 add_session() {
     local arg="$1"
 
     # Direct mode: cs add <sessionId>
-    UUID_REGEX='^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
     if [[ -n "$arg" && "$arg" != "--scan" ]]; then
         if [[ ! "$arg" =~ $UUID_REGEX ]]; then
             echo "Invalid session ID: $arg"
@@ -200,20 +218,15 @@ add_session() {
             return 1
         fi
 
+        # Reuse get_session_preview for single jq pass (fixes bug: was using $sid instead of $arg)
         local project_dir=""
         if [[ -f "$CLAUDE_HISTORY" ]]; then
-            project_dir=$(jq -r --arg sid "$sid" 'select(.sessionId == $sid) | .project // empty' "$CLAUDE_HISTORY" 2>/dev/null | head -1)
+            project_dir=$(jq -r --arg sid "$arg" 'select(.sessionId == $sid) | .project // empty' "$CLAUDE_HISTORY" 2>/dev/null | head -1)
         fi
-        local session_name=$(jq -r 'select(has("customTitle")) | .customTitle' "$transcript" 2>/dev/null | tail -1)
-        local first_msg=$(jq -r '
-            select(.type == "user" and .message != null) |
-            if (.message | type) == "string" then .message[:80]
-            elif (.message.content | type) == "string" then .message.content[:80]
-            elif (.message.content | type) == "array" then
-                (.message.content[] | select(type == "string" or .type == "text") |
-                if type == "string" then .[:80] else .text[:80] end) // empty
-            else empty end
-        ' "$transcript" 2>/dev/null | head -1)
+        local preview_data
+        preview_data=$(get_session_preview "$transcript") || true
+        local session_name=$(printf '%s' "$preview_data" | cut -d'|' -f3)
+        local first_msg=$(printf '%s' "$preview_data" | cut -d'|' -f4)
 
         echo "Session: $arg"
         [[ -n "$session_name" ]] && echo "Name: $session_name"
@@ -255,6 +268,13 @@ add_session() {
         logged_ids=$(jq -r '.[].session' "$LOG_FILE")
     fi
 
+    # Pre-build session->project lookup from history.jsonl (one jq pass instead of N)
+    local project_lookup=""
+    if [[ -f "$CLAUDE_HISTORY" ]]; then
+        project_lookup=$(mktemp)
+        jq -r 'select(.sessionId != null and .project != null) | [.sessionId, .project] | @tsv' "$CLAUDE_HISTORY" > "$project_lookup" 2>/dev/null
+    fi
+
     # Collect unlogged sessions with previews
     local previews=()
     for dir in "${scan_dirs[@]}"; do
@@ -265,10 +285,12 @@ add_session() {
                 continue
             fi
             local preview
-            preview=$(get_session_preview "$transcript") || continue
+            preview=$(get_session_preview "$transcript" "$project_lookup") || continue
             previews+=("${preview}")
         done
     done
+
+    [[ -n "$project_lookup" ]] && rm -f "$project_lookup"
 
     if [[ ${#previews[@]} -eq 0 ]]; then
         echo "No unlogged sessions found."
