@@ -1,6 +1,6 @@
 # Claude Session Monitor
 
-A simple tool that monitors Claude CLI exit messages and logs session resume commands with descriptions.
+A tool that monitors Claude CLI sessions and logs resume commands with descriptions. Uses `script(1)` to capture Claude's exit message, extracting the exact session ID for reliable logging — even with multiple concurrent sessions.
 
 ## Prerequisites
 
@@ -8,15 +8,19 @@ A simple tool that monitors Claude CLI exit messages and logs session resume com
   ```bash
   brew install jq
   ```
+- **Full Disk Access** for your terminal app (System Settings > Privacy & Security > Full Disk Access). Required per terminal app (Warp, iTerm2, Terminal.app, etc.) because `script(1)` creates a pseudo-TTY under macOS-protected directories.
 
 ## Features
 
-- 📝 Captures all resume messages when Claude sessions end
-- 💬 Prompts for session description (optional)
-- 🔍 Search and list logged sessions
-- 🔄 Quick resume from logged sessions
-- 🔁 Automatically updates existing sessions (no duplicates)
-- 📋 Preserves previous descriptions when resuming sessions
+- Captures the exact session ID from Claude's exit message via `script(1)`
+- Handles both UUID sessions and `/rename`d sessions (resolves names to UUIDs)
+- Prompts for session description (optional)
+- Tracks the project directory for each session — resumes in the correct folder
+- Search and list logged sessions
+- Quick resume from logged sessions
+- Automatically updates existing sessions (no duplicates)
+- Preserves previous descriptions when resuming sessions
+- File locking for safe concurrent writes
 
 ## Installation
 
@@ -36,6 +40,14 @@ source ~/.zshrc
 
 **Note:** Both the PATH export AND the alias are required. The alias ensures `claude` runs through the wrapper instead of the real binary.
 
+## How It Works
+
+1. The wrapper runs Claude inside `script(1)` to capture terminal output while preserving full TTY interactivity
+2. After Claude exits, it parses the "Resume this session with" message to extract the session ID
+3. If the exit message contains a `/rename` name instead of a UUID, it searches session transcripts (`~/.claude/projects/`) to resolve the UUID
+4. It looks up the project directory from `~/.claude/history.jsonl`
+5. Everything is saved to the log file with an optional description
+
 ## Usage
 
 ### Automatic Logging
@@ -44,10 +56,12 @@ Just use `claude` as normal. When a session ends with a resume message, you'll b
 
 ```
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-📝 Session ended: DB rd/wr investigation
-Enter session description (or press Enter to skip): Fixed database read/write issue in auth module
+📝 Session ended: eks upgrade (d3d3d743-48f2-4201-a011-e07244becf2f)
+Enter session description (or press Enter to skip): Planning k8s 1.33 upgrade
 ✅ Session logged to ~/.claude-sessions.log
 ```
+
+Sessions without a resume message (e.g., quick `/exit` with no interaction) are not logged.
 
 ### Managing Sessions
 
@@ -60,10 +74,11 @@ claude-sessions list
 claude-sessions last
 claude-sessions last 10
 
-# Search sessions by keyword (case-insensitive)
+# Search sessions by keyword (case-insensitive, searches name + description)
 claude-sessions search "database"
 
 # Resume Nth most recent session (1 = most recent)
+# Automatically cd's to the original project directory
 claude-sessions resume 1
 claude-sessions resume 3
 
@@ -81,7 +96,7 @@ Environment variables:
 | Variable | Description | Default |
 |----------|-------------|---------|
 | `CLAUDE_SESSION_LOG` | Path to log file | `~/.claude-sessions.log` |
-| `CLAUDE_PROMPT_CONTEXT` | Prompt for description | `true` |
+| `CLAUDE_PROMPT_CONTEXT` | Prompt for description on exit | `true` |
 
 To disable prompts:
 ```bash
@@ -96,9 +111,18 @@ Sessions are stored in JSON format at `~/.claude-sessions.log`:
 [
   {
     "timestamp": "2026-02-06 15:19:30",
-    "session": "DB rd/wr investigation",
-    "resume_cmd": "claude --resume \"DB rd/wr investigation\"",
-    "description": "Fixed database read/write issue in auth module"
+    "session": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+    "session_name": "eks upgrade",
+    "resume_cmd": "claude --resume a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+    "description": "Planning k8s 1.33 upgrade",
+    "project": "/Users/you/Documents/GitHub"
   }
 ]
 ```
+
+| Field | Description |
+|-------|-------------|
+| `session` | UUID session ID (always used for `--resume`) |
+| `session_name` | Display name from `/rename` (empty if not renamed) |
+| `project` | Working directory where the session was started |
+| `description` | User-provided description of the session |

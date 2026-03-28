@@ -30,7 +30,7 @@ list_sessions() {
         return
     fi
     
-    jq -r '.[] | "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\nTimestamp: \(.timestamp)\nSession: \(.session)\nResume cmd: \(.resume_cmd)" + (if .description != "" then "\nDescription: \(.description)" else "" end) + "\n"' "$LOG_FILE"
+    jq -r '.[] | "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\nTimestamp: \(.timestamp)" + (if .session_name != "" and .session_name != null then "\nName: \(.session_name)" else "" end) + "\nSession: \(.session)\nResume cmd: \(.resume_cmd)" + (if .project != "" and .project != null then "\nProject: \(.project)" else "" end) + (if .description != "" then "\nDescription: \(.description)" else "" end) + "\n"' "$LOG_FILE"
 }
 
 last_sessions() {
@@ -40,7 +40,7 @@ last_sessions() {
         return
     fi
     
-    jq -r --argjson count "$count" '(.[-$count:] | to_entries | .[] | "[\(.key + 1)] ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\nTimestamp: \(.value.timestamp)\nSession: \(.value.session)\nResume cmd: \(.value.resume_cmd)" + (if .value.description != "" then "\nDescription: \(.value.description)" else "" end) + "\n")' "$LOG_FILE"
+    jq -r --argjson count "$count" '(.[-$count:] | to_entries | .[] | "[\(.key + 1)] ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\nTimestamp: \(.value.timestamp)" + (if .value.session_name != "" and .value.session_name != null then "\nName: \(.value.session_name)" else "" end) + "\nSession: \(.value.session)\nResume cmd: \(.value.resume_cmd)" + (if .value.project != "" and .value.project != null then "\nProject: \(.value.project)" else "" end) + (if .value.description != "" then "\nDescription: \(.value.description)" else "" end) + "\n")' "$LOG_FILE"
 }
 
 search_sessions() {
@@ -56,7 +56,7 @@ search_sessions() {
     fi
     
     local results
-    results=$(jq -r --arg q "$query" '.[] | select(.session + .description + .resume_cmd | ascii_downcase | contains($q | ascii_downcase)) | "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\nTimestamp: \(.timestamp)\nSession: \(.session)\nResume cmd: \(.resume_cmd)" + (if .description != "" then "\nDescription: \(.description)" else "" end) + "\n"' "$LOG_FILE")
+    results=$(jq -r --arg q "$query" '.[] | select((.session + (.session_name // "") + .description + .resume_cmd) | ascii_downcase | contains($q | ascii_downcase)) | "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\nTimestamp: \(.timestamp)" + (if .session_name != "" and .session_name != null then "\nName: \(.session_name)" else "" end) + "\nSession: \(.session)\nResume cmd: \(.resume_cmd)" + (if .project != "" and .project != null then "\nProject: \(.project)" else "" end) + (if .description != "" then "\nDescription: \(.description)" else "" end) + "\n"' "$LOG_FILE")
     
     if [[ -z "$results" ]]; then
         echo "No matches found."
@@ -81,8 +81,22 @@ resume_session() {
         return 1
     fi
     
-    echo "Resuming session: $session_name"
-    
+    # Get the project directory for this session
+    local project_dir
+    project_dir=$(jq -r --argjson n "$n" '.[-$n].project // empty' "$LOG_FILE")
+
+    # Get the display name if available
+    local display_name
+    display_name=$(jq -r --argjson n "$n" '.[-$n].session_name // empty' "$LOG_FILE")
+    local label="${display_name:-$session_name}"
+
+    if [[ -n "$project_dir" ]] && [[ -d "$project_dir" ]]; then
+        echo "Resuming session: $label (in $project_dir)"
+        cd "$project_dir" || { echo "Failed to cd to $project_dir"; return 1; }
+    else
+        echo "Resuming session: $label"
+    fi
+
     # Use wrapper if available, otherwise fall back to claude
     if command -v claude-wrapper.sh &> /dev/null; then
         claude-wrapper.sh --resume "$session_name"
