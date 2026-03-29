@@ -26,7 +26,7 @@ Commands:
     list, ls, -ls    List all logged sessions
     last, -l [n]     Show last n sessions (default: 5)
     search, -s <q>   Search sessions by keyword
-    resume, -r <n>   Resume the nth most recent session
+    resume, -r <n|uuid>  Resume by position (1 = most recent) or session UUID
     add, -a [id]     Add session manually (browse unlogged or by UUID)
     add --scan       Browse unlogged sessions across all projects
     backup, -b       Backup sessions to timestamped file
@@ -79,15 +79,20 @@ search_sessions() {
 }
 
 resume_session() {
-    local n="${1:-1}"
+    local arg="${1:-1}"
     if no_sessions; then
         echo "No sessions logged yet."
         return 1
     fi
 
-    # Get session data in a single jq call
     local session_data
-    session_data=$(jq -r --argjson n "$n" '.[-$n] | [.session, .session_name // "", .project // ""] | @tsv' "$LOG_FILE")
+    if [[ "$arg" =~ $UUID_REGEX ]]; then
+        # Resume by UUID
+        session_data=$(jq -r --arg sid "$arg" '.[] | select(.session == $sid) | [.session, .session_name // "", .project // ""] | @tsv' "$LOG_FILE" | tail -1)
+    else
+        # Resume by position (1 = most recent)
+        session_data=$(jq -r --argjson n "$arg" '.[-$n] | [.session, .session_name // "", .project // ""] | @tsv' "$LOG_FILE")
+    fi
 
     local session_id display_name project_dir
     session_id=$(echo "$session_data" | cut -f1)
@@ -95,7 +100,11 @@ resume_session() {
     project_dir=$(echo "$session_data" | cut -f3)
 
     if [[ -z "$session_id" ]] || [[ "$session_id" == "null" ]]; then
-        echo "Session #$n not found."
+        if [[ "$arg" =~ $UUID_REGEX ]]; then
+            echo "Session $arg not found in log."
+        else
+            echo "No session at position $arg. Use 'cs last' to see available sessions."
+        fi
         return 1
     fi
 
