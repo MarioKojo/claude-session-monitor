@@ -16,11 +16,14 @@ A tool that monitors Claude CLI sessions and logs resume commands with descripti
 - Handles both UUID sessions and `/rename`d sessions (resolves names to UUIDs)
 - Prompts for session description (optional)
 - Tracks the project directory for each session — resumes in the correct folder
-- Search and list logged sessions
-- Quick resume from logged sessions
+- Resume by position (most recent first) or by UUID
+- Search and list logged sessions (by name, description, or UUID)
+- Add unlogged sessions manually — browse current project, all projects, or by UUID
+- Backup and clear with confirmation prompts
 - Automatically updates existing sessions (no duplicates)
 - Preserves previous descriptions when resuming sessions
 - File locking for safe concurrent writes
+- Short flags for all commands (`-r`, `-l`, `-s`, `-a`, `-b`)
 
 ## Installation
 
@@ -67,30 +70,35 @@ Sessions without a resume message (e.g., quick `/exit` with no interaction) are 
 ### Managing Sessions
 
 ```bash
-# List all sessions (default command)
-cs
-cs list
+# List all sessions
+cs                          # or: cs list, cs -ls
 
 # Show last N sessions (default: 5)
-cs last
-cs last 10
+cs last                     # or: cs -l
+cs -l 10
 
 # Search sessions by keyword (case-insensitive, searches name + description)
-cs search "database"
+cs search "database"        # or: cs -s "database"
 
-# Resume Nth most recent session (1 = most recent)
-# Automatically cd's to the original project directory
-cs resume 1
-cs resume 3
+# Resume by position (1 = most recent) or by UUID
+cs resume 1                 # or: cs -r 1
+cs -r 3
+cs -r a1b2c3d4-e5f6-7890-abcd-ef1234567890
 
-# Clear all logs (with confirmation)
-cs clear
+# Add unlogged sessions manually
+cs add                      # or: cs -a (browse current project)
+cs add --scan               # browse all projects
+cs add <uuid>               # add a specific session by UUID
+
+# Backup and clear
+cs backup                   # or: cs -b (timestamped backup)
+cs clear                    # prompts for backup before clearing
 
 # Show help
-cs help
+cs help                     # or: cs -h
 ```
 
-`cs` is an alias for `claude-sessions`. Both work interchangeably.
+`cs` is an alias for `claude-sessions`. All short flags (`-r`, `-l`, `-s`, `-ls`, `-a`, `-b`, `-h`) work interchangeably with full command names.
 
 ## Configuration
 
