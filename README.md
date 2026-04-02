@@ -28,11 +28,14 @@ A tool that monitors Claude CLI sessions and logs resume commands with descripti
 ## Installation
 
 ```bash
+# Clone the repo
+git clone https://github.com/MarioKojo/claude-session-monitor.git ~/claude-session-monitor
+
 # Make scripts executable
-chmod +x claude-wrapper.sh claude-sessions.sh
+chmod +x ~/claude-session-monitor/claude-wrapper.sh ~/claude-session-monitor/claude-sessions.sh
 
 # Add to your ~/.zshrc (both lines are required):
-export PATH="$HOME/Documents/GitHub/claude-session-monitor:$PATH"
+export PATH="$HOME/claude-session-monitor:$PATH"
 alias claude="claude-wrapper.sh"
 alias cs="claude-sessions"
 ```
@@ -43,6 +46,8 @@ source ~/.zshrc
 ```
 
 **Note:** Both the PATH export AND the alias are required. The alias ensures `claude` runs through the wrapper instead of the real binary.
+
+> You can clone to any directory — just update the `PATH` export to match your chosen location.
 
 ## How It Works
 
