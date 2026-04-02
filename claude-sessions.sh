@@ -29,6 +29,7 @@ Commands:
     resume, -r <n|uuid>  Resume by position (1 = most recent) or session UUID
     add, -a [id]     Add session manually (browse unlogged or by UUID)
     add --scan       Browse unlogged sessions across all projects
+    desc <session_id>  Update description for a session (also: claude -desc <id>)
     backup, -b       Backup sessions to timestamped file
     clear            Clear all logged sessions (prompts for backup)
     help, -h         Show this help message
@@ -348,6 +349,52 @@ add_session() {
     echo "✅ Session added."
 }
 
+update_session_description() {
+    local session_id="$1"
+    if [[ -z "$session_id" ]]; then
+        echo "Usage: cs desc <session_id>"
+        return 1
+    fi
+    if no_sessions; then
+        echo "No sessions logged yet."
+        return 1
+    fi
+
+    local session_data
+    session_data=$(jq -r --arg s "$session_id" \
+        '.[] | select(.session == $s) | [.description // "", .session_name // "", .project // ""] | @tsv' \
+        "$LOG_FILE" 2>/dev/null | head -1)
+
+    if [[ -z "$session_data" ]]; then
+        echo "Session $session_id not found in log."
+        return 1
+    fi
+
+    local current_desc session_name
+    current_desc=$(echo "$session_data" | cut -f1)
+    session_name=$(echo "$session_data" | cut -f2)
+
+    if [[ -n "$session_name" ]]; then
+        echo "📝 Session: $session_name ($session_id)"
+    else
+        echo "📝 Session: $session_id"
+    fi
+    [[ -n "$current_desc" ]] && echo "📋 Current description: $current_desc"
+
+    read -p "New description: " new_desc
+    if [[ -z "$new_desc" ]]; then
+        echo "No change."
+        return 0
+    fi
+
+    local tmp
+    tmp=$(mktemp)
+    jq --arg s "$session_id" --arg d "$new_desc" \
+        'map(if .session == $s then .description = $d else . end)' \
+        "$LOG_FILE" > "$tmp" && mv "$tmp" "$LOG_FILE"
+    echo "✅ Description updated."
+}
+
 backup_sessions() {
     if no_sessions; then
         echo "No sessions to backup."
@@ -392,6 +439,9 @@ case "${1:-list}" in
         ;;
     add|-a)
         add_session "$2"
+        ;;
+    desc)
+        update_session_description "$2"
         ;;
     backup|-b)
         backup_sessions

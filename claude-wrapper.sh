@@ -11,6 +11,16 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # Only source function definitions, skip the case dispatcher
 eval "$(sed '/^# Main command dispatcher$/,$d' "$SCRIPT_DIR/claude-sessions.sh")"
 
+# Handle description update command (intercepts before launching claude)
+if [[ "$1" == "-desc" || "$1" == "--desc" ]]; then
+    if [[ -z "$2" ]]; then
+        echo "Usage: claude -desc <session_id>"
+        exit 1
+    fi
+    update_session_description "$2"
+    exit $?
+fi
+
 # Find the real claude binary (not this wrapper)
 REAL_CLAUDE=$(which -a claude | grep -v claude-wrapper | head -1)
 if [[ -z "$REAL_CLAUDE" ]]; then
@@ -105,8 +115,6 @@ if [[ -n "$RESUME_VALUE" ]]; then
     # Look up existing description (used for display and fallback)
     EXISTING_DESC=$(jq -r --arg session "$SESSION_ID" '.[] | select(.session == $session) | .description // empty' "$LOG_FILE" 2>/dev/null | head -1)
 
-    DESCRIPTION=""
-
     if [[ "$PROMPT_FOR_CONTEXT" == "true" ]]; then
         echo ""
         echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
@@ -115,25 +123,28 @@ if [[ -n "$RESUME_VALUE" ]]; then
         else
             echo "📝 Session ended: $SESSION_ID"
         fi
+    fi
 
-        if [[ -n "$EXISTING_DESC" ]]; then
+    if [[ -n "$EXISTING_DESC" ]]; then
+        # Known session: log automatically with existing description, show how to change it
+        if [[ "$PROMPT_FOR_CONTEXT" == "true" ]]; then
             echo "📋 Existing description: $EXISTING_DESC"
+            echo "⚙️  Change description: claude -desc $SESSION_ID"
         fi
-
-        read -p "Enter session description (or press Enter to skip): " DESCRIPTION
-    fi
-
-    # Preserve old description if no new one provided
-    if [[ -z "$DESCRIPTION" ]] && [[ -n "$EXISTING_DESC" ]]; then
-        DESCRIPTION="$EXISTING_DESC"
-    fi
-
-    # Skip sessions with no description (don't log new sessions where user pressed Enter)
-    if [[ -z "$DESCRIPTION" ]]; then
-        echo "⏭️  Session not logged (no description provided)"
-    else
-        add_session_to_log "$SESSION_ID" "$SESSION_NAME" "$PROJECT_DIR" "$DESCRIPTION"
+        add_session_to_log "$SESSION_ID" "$SESSION_NAME" "$PROJECT_DIR" "$EXISTING_DESC"
         echo "✅ Session logged to $LOG_FILE"
+    else
+        # New session: prompt for description, skip if none provided
+        DESCRIPTION=""
+        if [[ "$PROMPT_FOR_CONTEXT" == "true" ]]; then
+            read -p "Enter session description (or press Enter to skip): " DESCRIPTION
+        fi
+        if [[ -z "$DESCRIPTION" ]]; then
+            echo "⏭️  Session not logged (no description provided)"
+        else
+            add_session_to_log "$SESSION_ID" "$SESSION_NAME" "$PROJECT_DIR" "$DESCRIPTION"
+            echo "✅ Session logged to $LOG_FILE"
+        fi
     fi
 fi
 

@@ -56,18 +56,27 @@ source ~/.zshrc
 
 ### Automatic Logging
 
-Just use `claude` as normal. When a session ends with a resume message, you'll be prompted:
+Just use `claude` as normal. When a session ends:
 
+**New session** (no existing description) — you're prompted to describe it:
 ```
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-📝 Session ended: eks upgrade (d3d3d743-48f2-4201-a011-e07244becf2f)
+📝 Session ended: d3d3d743-48f2-4201-a011-e07244becf2f
 Enter session description (or press Enter to skip): Planning k8s 1.33 upgrade
 ✅ Session logged to ~/.claude-sessions.log
 ```
 
-Sessions without a resume message (e.g., quick `/exit` with no interaction) are not logged.
+**Known session** (already has a description) — logged automatically, no prompt:
+```
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+📝 Session ended: The Ansible (e1cea1a6-bf61-4182-8d77-5e90ac438f43)
+📋 Existing description: The Ansible Team configuration
+⚙️  Change description: claude -desc e1cea1a6-bf61-4182-8d77-5e90ac438f43
+✅ Session logged to ~/.claude-sessions.log
+```
 
-Sessions where you press Enter without providing a description are also skipped — only sessions with a description are saved. If a session already has a description in the log, pressing Enter preserves the existing description.
+Sessions without a resume message (e.g., quick `/exit` with no interaction) are not logged.
+Sessions where you press Enter without providing a description for a new session are also skipped.
 
 ### Managing Sessions
 
@@ -91,6 +100,9 @@ cs -r a1b2c3d4-e5f6-7890-abcd-ef1234567890
 cs add                      # or: cs -a (browse current project)
 cs add --scan               # browse all projects
 cs add <uuid>               # add a specific session by UUID
+
+# Update a session's description
+cs desc <uuid>              # or: claude -desc <uuid>
 
 # Backup and clear
 cs backup                   # or: cs -b (timestamped backup)
