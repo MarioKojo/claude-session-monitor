@@ -126,24 +126,22 @@ if [[ -n "$RESUME_VALUE" ]]; then
     fi
 
     if [[ -n "$EXISTING_DESC" ]]; then
-        # Known session: log automatically with existing description, show how to change it
+        add_session_to_log "$SESSION_ID" "$SESSION_NAME" "$PROJECT_DIR" "$EXISTING_DESC"
         if [[ "$PROMPT_FOR_CONTEXT" == "true" ]]; then
             echo "📋 Existing description: $EXISTING_DESC"
             echo "⚙️  Change description: claude -desc $SESSION_ID"
+            echo "✅ Session logged to $LOG_FILE"
         fi
-        add_session_to_log "$SESSION_ID" "$SESSION_NAME" "$PROJECT_DIR" "$EXISTING_DESC"
-        echo "✅ Session logged to $LOG_FILE"
     else
-        # New session: prompt for description, skip if none provided
         DESCRIPTION=""
         if [[ "$PROMPT_FOR_CONTEXT" == "true" ]]; then
             read -p "Enter session description (or press Enter to skip): " DESCRIPTION
         fi
         if [[ -z "$DESCRIPTION" ]]; then
-            echo "⏭️  Session not logged (no description provided)"
+            [[ "$PROMPT_FOR_CONTEXT" == "true" ]] && echo "⏭️  Session not logged (no description provided)"
         else
             add_session_to_log "$SESSION_ID" "$SESSION_NAME" "$PROJECT_DIR" "$DESCRIPTION"
-            echo "✅ Session logged to $LOG_FILE"
+            [[ "$PROMPT_FOR_CONTEXT" == "true" ]] && echo "✅ Session logged to $LOG_FILE"
         fi
     fi
 fi

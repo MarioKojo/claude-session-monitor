@@ -362,7 +362,7 @@ update_session_description() {
 
     local session_data
     session_data=$(jq -r --arg s "$session_id" \
-        '.[] | select(.session == $s) | [.description // "", .session_name // "", .project // ""] | @tsv' \
+        '.[] | select(.session == $s) | [.description // "", .session_name // ""] | @tsv' \
         "$LOG_FILE" 2>/dev/null | head -1)
 
     if [[ -z "$session_data" ]]; then
@@ -387,12 +387,27 @@ update_session_description() {
         return 0
     fi
 
+    local lock_file="${LOG_FILE}.lock"
     local tmp
     tmp=$(mktemp)
-    jq --arg s "$session_id" --arg d "$new_desc" \
+
+    for i in $(seq 1 50); do
+        if (set -o noclobber; echo $$ > "$lock_file") 2>/dev/null; then
+            break
+        fi
+        sleep 0.1
+    done
+
+    if jq --arg s "$session_id" --arg d "$new_desc" \
         'map(if .session == $s then .description = $d else . end)' \
-        "$LOG_FILE" > "$tmp" && mv "$tmp" "$LOG_FILE"
-    echo "✅ Description updated."
+        "$LOG_FILE" > "$tmp"; then
+        mv "$tmp" "$LOG_FILE"
+        echo "✅ Description updated."
+    else
+        rm -f "$tmp"
+        echo "Error: failed to update description."
+    fi
+    rm -f "$lock_file"
 }
 
 backup_sessions() {
