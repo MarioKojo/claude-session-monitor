@@ -128,10 +128,13 @@ if [[ -n "$RESUME_VALUE" ]]; then
         DESCRIPTION="$EXISTING_DESC"
     fi
 
-    # Write to log (add_session_to_log from claude-sessions.sh handles locking)
-    add_session_to_log "$SESSION_ID" "$SESSION_NAME" "$PROJECT_DIR" "$DESCRIPTION"
-
-    echo "✅ Session logged to $LOG_FILE"
+    # Skip sessions with no description (don't log new sessions where user pressed Enter)
+    if [[ -z "$DESCRIPTION" ]]; then
+        echo "⏭️  Session not logged (no description provided)"
+    else
+        add_session_to_log "$SESSION_ID" "$SESSION_NAME" "$PROJECT_DIR" "$DESCRIPTION"
+        echo "✅ Session logged to $LOG_FILE"
+    fi
 fi
 
 exit $EXIT_CODE

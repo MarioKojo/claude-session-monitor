@@ -67,6 +67,8 @@ Enter session description (or press Enter to skip): Planning k8s 1.33 upgrade
 
 Sessions without a resume message (e.g., quick `/exit` with no interaction) are not logged.
 
+Sessions where you press Enter without providing a description are also skipped — only sessions with a description are saved. If a session already has a description in the log, pressing Enter preserves the existing description.
+
 ### Managing Sessions
 
 ```bash
