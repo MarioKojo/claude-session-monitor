@@ -4,6 +4,7 @@
 # View and manage logged Claude sessions
 
 LOG_FILE="${CLAUDE_SESSION_LOG:-$HOME/.claude-sessions.log}"
+ARCHIVE_FILE="${CLAUDE_SESSION_ARCHIVE:-$HOME/.claude-sessions-archive.log}"
 CLAUDE_PROJECTS_DIR="$HOME/.claude/projects"
 CLAUDE_HISTORY="$HOME/.claude/history.jsonl"
 
@@ -30,12 +31,14 @@ Commands:
     add, -a [id]     Add session manually (browse unlogged or by UUID)
     add --scan       Browse unlogged sessions across all projects
     desc <session_id>  Update description for a session (also: claude -desc <id>)
+    archive          Move expired sessions (no transcript) to archive file
     backup, -b       Backup sessions to timestamped file
     clear            Clear all logged sessions (prompts for backup)
     help, -h         Show this help message
 
 Environment:
-    CLAUDE_SESSION_LOG   Path to log file (default: ~/.claude-sessions.log)
+    CLAUDE_SESSION_LOG     Path to log file (default: ~/.claude-sessions.log)
+    CLAUDE_SESSION_ARCHIVE Path to archive file (default: ~/.claude-sessions-archive.log)
 EOF
 }
 
@@ -410,6 +413,75 @@ update_session_description() {
     rm -f "$lock_file"
 }
 
+archive_expired_sessions() {
+    if no_sessions; then
+        echo "No sessions to archive."
+        return
+    fi
+
+    echo "Scanning for expired sessions (no transcript in ~/.claude/projects/)..."
+
+    # Collect expired session IDs: those with no corresponding .jsonl transcript
+    local expired=()
+    while IFS= read -r sid; do
+        if ! find "$CLAUDE_PROJECTS_DIR" -name "${sid}.jsonl" -print -quit 2>/dev/null | grep -q .; then
+            expired+=("$sid")
+        fi
+    done < <(jq -r '.[].session' "$LOG_FILE")
+
+    if [[ ${#expired[@]} -eq 0 ]]; then
+        echo "No expired sessions found — all sessions have active transcripts."
+        return
+    fi
+
+    echo "Found ${#expired[@]} expired session(s)."
+    read -p "Archive them to $ARCHIVE_FILE? [Y/n] " confirm
+    if [[ "$confirm" =~ ^[Nn]$ ]]; then
+        echo "Cancelled."
+        return
+    fi
+
+    # Build jq filter: array of IDs as a JSON array
+    local ids_json
+    ids_json=$(printf '%s\n' "${expired[@]}" | jq -R . | jq -s .)
+
+    # Ensure archive file exists as a JSON array
+    if [[ ! -s "$ARCHIVE_FILE" ]]; then
+        echo '[]' > "$ARCHIVE_FILE"
+    fi
+
+    local lock_file="${LOG_FILE}.lock"
+    local tmp_active tmp_archive
+    tmp_active=$(mktemp)
+    tmp_archive=$(mktemp)
+
+    for i in $(seq 1 50); do
+        if (set -o noclobber; echo $$ > "$lock_file") 2>/dev/null; then
+            break
+        fi
+        sleep 0.1
+    done
+
+    # Extract expired entries → append to archive; keep active entries in main log
+    jq --argjson ids "$ids_json" '[.[] | select(.session | IN($ids[]))]' "$LOG_FILE" > "$tmp_archive"
+    jq --argjson ids "$ids_json" '[.[] | select(.session | IN($ids[]) | not)]' "$LOG_FILE" > "$tmp_active"
+
+    # Merge expired entries into archive (deduplicate by session ID)
+    jq -s '
+        (.[0] + .[1])
+        | group_by(.session)
+        | map(last)
+        | sort_by(.timestamp)
+    ' "$ARCHIVE_FILE" "$tmp_archive" > "${tmp_archive}.merged" \
+        && mv "${tmp_archive}.merged" "$ARCHIVE_FILE"
+
+    mv "$tmp_active" "$LOG_FILE"
+    rm -f "$tmp_archive" "$lock_file"
+
+    echo "✅ ${#expired[@]} session(s) archived to $ARCHIVE_FILE"
+    echo "   Active sessions remaining: $(jq 'length' "$LOG_FILE")"
+}
+
 backup_sessions() {
     if no_sessions; then
         echo "No sessions to backup."
@@ -457,6 +529,9 @@ case "${1:-list}" in
         ;;
     desc)
         update_session_description "$2"
+        ;;
+    archive)
+        archive_expired_sessions
         ;;
     backup|-b)
         backup_sessions

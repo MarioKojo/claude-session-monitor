@@ -109,6 +109,9 @@ cs add <uuid>               # add a specific session by UUID
 # Update a session's description
 cs desc <uuid>              # or: claude -desc <uuid>
 
+# Archive expired sessions (no transcript = Claude cleaned them up after 30 days)
+cs archive                  # moves expired sessions to ~/.claude-sessions-archive.log
+
 # Backup and clear
 cs backup                   # or: cs -b (timestamped backup)
 cs clear                    # prompts for backup before clearing
@@ -125,7 +128,8 @@ Environment variables:
 
 | Variable | Description | Default |
 |----------|-------------|---------|
-| `CLAUDE_SESSION_LOG` | Path to log file | `~/.claude-sessions.log` |
+| `CLAUDE_SESSION_LOG` | Path to active session log | `~/.claude-sessions.log` |
+| `CLAUDE_SESSION_ARCHIVE` | Path to archive file | `~/.claude-sessions-archive.log` |
 | `CLAUDE_PROMPT_CONTEXT` | Prompt for description on exit | `true` |
 
 To disable prompts:
