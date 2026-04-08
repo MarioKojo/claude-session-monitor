@@ -53,16 +53,23 @@ else
 fi
 
 # Extract the resume value from the exit message (could be a UUID or a /rename name)
-RESUME_LINE=$(grep -A1 "Resume this session with:" "$TEMP_OUTPUT" | tail -1)
-
+# /fork produces multiple "Resume this session with:" lines — scan all, prefer first valid UUID,
+# and skip strings containing [ ] which are terminal artifact text (not real session IDs).
 RESUME_VALUE=""
-if [[ -n "$RESUME_LINE" ]]; then
-    CLEAN_LINE=$(echo "$RESUME_LINE" | sed -E 's/\x1b\[[0-9;]*[a-zA-Z]//g' | tr -d '\r')
-    RESUME_VALUE=$(echo "$CLEAN_LINE" | sed -n 's/.*--resume "\([^"]*\)".*/\1/p')
-    if [[ -z "$RESUME_VALUE" ]]; then
-        RESUME_VALUE=$(echo "$CLEAN_LINE" | sed -n 's/.*--resume \([^ ]*\).*/\1/p')
+while IFS= read -r resume_line; do
+    CLEAN=$(echo "$resume_line" | sed -E 's/\x1b\[[0-9;]*[a-zA-Z]//g' | tr -d '\r')
+    VAL=$(echo "$CLEAN" | sed -n 's/.*--resume "\([^"]*\)".*/\1/p')
+    [[ -z "$VAL" ]] && VAL=$(echo "$CLEAN" | sed -n 's/.*--resume \([^ ]*\).*/\1/p')
+    [[ -z "$VAL" ]] && continue
+    [[ "$VAL" =~ [\[\]] ]] && continue          # skip terminal artifact strings
+    if [[ "$VAL" =~ $UUID_REGEX ]]; then
+        RESUME_VALUE="$VAL"
+        break                                   # first valid UUID wins
+    elif [[ -z "$RESUME_VALUE" && ${#VAL} -lt 100 ]]; then
+        RESUME_VALUE="$VAL"                     # plausible /rename name as fallback
     fi
-fi
+done < <(grep -A1 "Resume this session with:" "$TEMP_OUTPUT" \
+         | grep -v "Resume this session with:" | grep -v "^--$")
 
 rm -f "$TEMP_OUTPUT"
 trap - EXIT
@@ -88,9 +95,10 @@ if [[ -n "$RESUME_VALUE" ]]; then
         fi
     fi
 
-    # If we still don't have a UUID, use the name as-is (backwards compatible)
+    # If name resolution failed, we have no valid session ID — skip logging
     if [[ -z "$SESSION_ID" ]]; then
-        SESSION_ID="$RESUME_VALUE"
+        [[ "$PROMPT_FOR_CONTEXT" == "true" ]] && echo "⚠️  Could not resolve session ID for: $RESUME_VALUE — skipping log."
+        exit $EXIT_CODE
     fi
 
     # Look up the project directory from Claude's history
