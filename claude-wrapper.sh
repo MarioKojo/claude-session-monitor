@@ -112,12 +112,12 @@ if [[ -n "$RESUME_VALUE" ]]; then
         PROJECT_KEY=$(echo "$PROJECT_DIR" | sed 's|/|-|g')
     fi
 
-    # Look up custom session name from transcript if not already set
-    if [[ -z "$SESSION_NAME" ]]; then
-        TRANSCRIPT="$CLAUDE_PROJECTS_DIR/$PROJECT_KEY/$SESSION_ID.jsonl"
-        if [[ -f "$TRANSCRIPT" ]]; then
-            SESSION_NAME=$(get_custom_title "$TRANSCRIPT")
-        fi
+    # Always read the session name from the transcript — it reflects the latest /rename.
+    # The exit message name can lag or differ; the transcript customTitle is authoritative.
+    TRANSCRIPT="$CLAUDE_PROJECTS_DIR/$PROJECT_KEY/$SESSION_ID.jsonl"
+    if [[ -f "$TRANSCRIPT" ]]; then
+        TRANSCRIPT_NAME=$(get_custom_title "$TRANSCRIPT")
+        [[ -n "$TRANSCRIPT_NAME" ]] && SESSION_NAME="$TRANSCRIPT_NAME"
     fi
 
     # Look up existing description (used for display and fallback)
