@@ -109,6 +109,9 @@ cs add <uuid>               # add a specific session by UUID
 # Update a session's description
 cs desc <uuid>              # or: claude -desc <uuid>
 
+# Move a session to a different project directory
+cs move <uuid> ~/Documents/GitHub/kojo-ansible
+
 # Archive expired sessions (no transcript = Claude cleaned them up after 30 days)
 cs archive                  # moves expired sessions to ~/.claude-sessions-archive.log
 

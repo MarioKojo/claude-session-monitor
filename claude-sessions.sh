@@ -31,6 +31,7 @@ Commands:
     add, -a [id]     Add session manually (browse unlogged or by UUID)
     add --scan       Browse unlogged sessions across all projects
     desc <session_id>  Update description for a session (also: claude -desc <id>)
+    move <id> <path>  Move session to a different project directory
     archive          Move expired sessions (no transcript) to archive file
     backup, -b       Backup sessions to timestamped file
     clear            Clear all logged sessions (prompts for backup)
@@ -413,6 +414,100 @@ update_session_description() {
     rm -f "$lock_file"
 }
 
+move_session() {
+    local session_id="$1"
+    local new_project="${2/#\~/$HOME}"   # expand ~ if present
+
+    if [[ -z "$session_id" || -z "$new_project" ]]; then
+        echo "Usage: cs move <session_id> <new_project_path>"
+        return 1
+    fi
+    if [[ ! "$session_id" =~ $UUID_REGEX ]]; then
+        echo "Invalid session ID: $session_id"
+        return 1
+    fi
+    if [[ ! -d "$new_project" ]]; then
+        echo "Directory does not exist: $new_project"
+        return 1
+    fi
+    if no_sessions; then
+        echo "No sessions logged yet."
+        return 1
+    fi
+
+    local session_data
+    session_data=$(jq -r --arg s "$session_id" \
+        '.[] | select(.session == $s) | [.project // "", .session_name // "", .description // ""] | @tsv' \
+        "$LOG_FILE" 2>/dev/null | head -1)
+
+    if [[ -z "$session_data" ]]; then
+        echo "Session $session_id not found in log."
+        return 1
+    fi
+
+    local current_project session_name description
+    current_project=$(echo "$session_data" | cut -f1)
+    session_name=$(echo "$session_data" | cut -f2)
+    description=$(echo "$session_data" | cut -f3)
+
+    echo "Session:  ${session_name:-$session_id}"
+    [[ -n "$description" ]] && echo "Desc:     $description"
+    echo "From:     ${current_project:-(unknown)}"
+    echo "To:       $new_project"
+    read -p "Confirm move? [Y/n] " confirm
+    [[ "$confirm" =~ ^[Nn]$ ]] && echo "Cancelled." && return
+
+    # 1. Move transcript file (if it exists)
+    local old_key new_key
+    old_key=$(echo "$current_project" | sed 's|/|-|g')
+    new_key=$(echo "$new_project" | sed 's|/|-|g')
+    local old_transcript="$CLAUDE_PROJECTS_DIR/$old_key/$session_id.jsonl"
+    local new_transcript_dir="$CLAUDE_PROJECTS_DIR/$new_key"
+
+    if [[ -f "$old_transcript" ]]; then
+        mkdir -p "$new_transcript_dir"
+        mv "$old_transcript" "$new_transcript_dir/$session_id.jsonl"
+        echo "✅ Transcript moved"
+    else
+        echo "⚠️  Transcript not found (expired or already moved)"
+    fi
+
+    # 2. Update our session log
+    local lock_file tmp
+    lock_file="${LOG_FILE}.lock"
+    tmp=$(mktemp)
+
+    for i in $(seq 1 50); do
+        if (set -o noclobber; echo $$ > "$lock_file") 2>/dev/null; then break; fi
+        sleep 0.1
+    done
+
+    jq --arg s "$session_id" --arg p "$new_project" \
+        'map(if .session == $s then .project = $p else . end)' \
+        "$LOG_FILE" > "$tmp" && mv "$tmp" "$LOG_FILE"
+    rm -f "$lock_file"
+    echo "✅ Session log updated"
+
+    # 3. Append a corrected entry to history.jsonl so 'claude --resume' resolves the right dir
+    #    history.jsonl is append-only; Claude uses the last entry per sessionId as the source of truth
+    if [[ -f "$CLAUDE_HISTORY" ]]; then
+        local existing_line
+        existing_line=$(grep "\"$session_id\"" "$CLAUDE_HISTORY" | tail -1)
+        if [[ -n "$existing_line" ]]; then
+            echo "$existing_line" \
+                | jq --arg p "$new_project" --argjson ts "$(date +%s%3N)" \
+                      '.project = $p | .timestamp = $ts' \
+                >> "$CLAUDE_HISTORY"
+            echo "✅ history.jsonl updated (appended correction)"
+        else
+            echo "⚠️  Session not in history.jsonl — only session log was updated"
+        fi
+    fi
+
+    echo ""
+    echo "✅ Session moved to: $new_project"
+}
+
 archive_expired_sessions() {
     if no_sessions; then
         echo "No sessions to archive."
@@ -529,6 +624,9 @@ case "${1:-list}" in
         ;;
     desc)
         update_session_description "$2"
+        ;;
+    move)
+        move_session "$2" "$3"
         ;;
     archive)
         archive_expired_sessions
