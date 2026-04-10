@@ -467,6 +467,11 @@ move_session() {
     if [[ -f "$old_transcript" ]]; then
         mkdir -p "$new_transcript_dir"
         mv "$old_transcript" "$new_transcript_dir/$session_id.jsonl"
+        # Also move the subagents/ directory if present (created when the session ran sub-agents)
+        local old_session_dir="$CLAUDE_PROJECTS_DIR/$old_key/$session_id"
+        if [[ -d "$old_session_dir" ]]; then
+            mv "$old_session_dir" "$new_transcript_dir/$session_id"
+        fi
         echo "✅ Transcript moved"
     else
         echo "⚠️  Transcript not found (expired or already moved)"
@@ -575,6 +580,17 @@ archive_expired_sessions() {
 
     echo "✅ ${#expired[@]} session(s) archived to $ARCHIVE_FILE"
     echo "   Active sessions remaining: $(jq 'length' "$LOG_FILE")"
+
+    # Clean up stale security_warnings_state_<uuid>.json files for archived sessions
+    local cleaned=0
+    for sid in "${expired[@]}"; do
+        local sw_file="${HOME}/.claude/security_warnings_state_${sid}.json"
+        if [[ -f "$sw_file" ]]; then
+            rm -f "$sw_file"
+            cleaned=$((cleaned + 1))
+        fi
+    done
+    [[ $cleaned -gt 0 ]] && echo "   Cleaned $cleaned security_warnings_state file(s)"
 }
 
 backup_sessions() {
