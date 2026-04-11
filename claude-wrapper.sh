@@ -131,22 +131,29 @@ if [[ -n "$RESUME_VALUE" ]]; then
     # Look up existing description (used for display and fallback)
     EXISTING_DESC=$(jq -r --arg session "$SESSION_ID" '.[] | select(.session == $session) | .description // empty' "$LOG_FILE" 2>/dev/null | head -1)
 
+    # ANSI color helpers (reset after each use to stay safe in all terminals)
+    C_RESET='\033[0m'
+    C_BOLD_CYAN='\033[1;36m'
+    C_DIM='\033[2m'
+    C_GREEN='\033[0;32m'
+    C_YELLOW='\033[0;33m'
+
     if [[ "$PROMPT_FOR_CONTEXT" == "true" ]]; then
         echo ""
-        echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+        printf "${C_DIM}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${C_RESET}\n"
         if [[ -n "$SESSION_NAME" ]]; then
-            echo "📝 Session ended: $SESSION_NAME ($SESSION_ID)"
+            printf "📝 Session ended: ${C_BOLD_CYAN}%s${C_RESET} ${C_DIM}(%s)${C_RESET}\n" "$SESSION_ID" "$SESSION_NAME"
         else
-            echo "📝 Session ended: $SESSION_ID"
+            printf "📝 Session ended: ${C_BOLD_CYAN}%s${C_RESET}\n" "$SESSION_ID"
         fi
     fi
 
     if [[ -n "$EXISTING_DESC" ]]; then
         add_session_to_log "$SESSION_ID" "$SESSION_NAME" "$PROJECT_DIR" "$EXISTING_DESC"
         if [[ "$PROMPT_FOR_CONTEXT" == "true" ]]; then
-            echo "📋 Existing description: $EXISTING_DESC"
-            echo "⚙️  Change description: claude -desc $SESSION_ID"
-            echo "✅ Session logged to $LOG_FILE"
+            printf "${C_GREEN}✅ Session logged to %s${C_RESET}\n" "$LOG_FILE"
+            printf "📋 Description: ${C_YELLOW}%s${C_RESET}\n" "$EXISTING_DESC"
+            printf "${C_DIM}⚙️  Change description: claude -desc %s${C_RESET}\n" "$SESSION_ID"
         fi
     else
         DESCRIPTION=""
@@ -154,10 +161,10 @@ if [[ -n "$RESUME_VALUE" ]]; then
             read -p "Enter session description (or press Enter to skip): " DESCRIPTION
         fi
         if [[ -z "$DESCRIPTION" ]]; then
-            [[ "$PROMPT_FOR_CONTEXT" == "true" ]] && echo "⏭️  Session not logged (no description provided)"
+            [[ "$PROMPT_FOR_CONTEXT" == "true" ]] && printf "${C_DIM}⏭️  Session not logged (no description provided)${C_RESET}\n"
         else
             add_session_to_log "$SESSION_ID" "$SESSION_NAME" "$PROJECT_DIR" "$DESCRIPTION"
-            [[ "$PROMPT_FOR_CONTEXT" == "true" ]] && echo "✅ Session logged to $LOG_FILE"
+            [[ "$PROMPT_FOR_CONTEXT" == "true" ]] && printf "${C_GREEN}✅ Session logged to %s${C_RESET}\n" "$LOG_FILE"
         fi
     fi
 fi
