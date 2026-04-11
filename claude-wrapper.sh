@@ -129,7 +129,7 @@ if [[ -n "$RESUME_VALUE" ]]; then
     fi
 
     # Look up existing description and stored name (single jq pass)
-    read -r EXISTING_DESC STORED_NAME < <(jq -r --arg session "$SESSION_ID" \
+    IFS=$'\t' read -r EXISTING_DESC STORED_NAME < <(jq -r --arg session "$SESSION_ID" \
         '.[] | select(.session == $session) | [.description // "", .name // ""] | @tsv' \
         "$LOG_FILE" 2>/dev/null | head -1)
     # Fall back to stored log name if transcript had no custom title
@@ -157,7 +157,7 @@ if [[ -n "$RESUME_VALUE" ]]; then
         if [[ "$PROMPT_FOR_CONTEXT" == "true" ]]; then
             printf "${C_GREEN}✅ Session logged to %s${C_RESET}\n" "$LOG_FILE"
             printf "📋 Description: ${C_YELLOW}%s${C_RESET}\n" "$EXISTING_DESC"
-            printf "${C_DIM}⚙️  Change description: claude -desc %s${C_RESET}\n" "$SESSION_ID"
+            printf "${C_DIM}⚙️ Change description: claude -desc %s${C_RESET}\n" "$SESSION_ID"
         fi
     else
         DESCRIPTION=""
