@@ -145,10 +145,10 @@ if [[ -n "$RESUME_VALUE" ]]; then
     if [[ "$PROMPT_FOR_CONTEXT" == "true" ]]; then
         echo ""
         printf "${C_DIM}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${C_RESET}\n"
-        printf "🆔 ${C_BOLD_CYAN}%s${C_RESET}\n" "$SESSION_ID"
-        printf "🏷️  ${C_DIM}%s${C_RESET}\n" "${SESSION_NAME:-(none)}"
+        printf "🆔 Session id:          ${C_BOLD_CYAN}%s${C_RESET}\n" "$SESSION_ID"
+        printf "🏷️  Session alias:       ${C_DIM}%s${C_RESET}\n" "${SESSION_NAME:-(none)}"
         if [[ -n "$EXISTING_DESC" ]]; then
-            printf "💬 ${C_YELLOW}%s${C_RESET}\n" "$EXISTING_DESC"
+            printf "💬 Session description: ${C_YELLOW}%s${C_RESET}\n" "$EXISTING_DESC"
         fi
     fi
 
