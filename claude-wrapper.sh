@@ -145,17 +145,17 @@ if [[ -n "$RESUME_VALUE" ]]; then
     if [[ "$PROMPT_FOR_CONTEXT" == "true" ]]; then
         echo ""
         printf "${C_DIM}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${C_RESET}\n"
-        printf "Session id:          ${C_BOLD_CYAN}%s${C_RESET}\n" "$SESSION_ID"
-        printf "Session alias:       ${C_DIM}%s${C_RESET}\n" "${SESSION_NAME:-(none)}"
+        printf "🆔 ${C_BOLD_CYAN}%s${C_RESET}\n" "$SESSION_ID"
+        printf "🏷️  ${C_DIM}%s${C_RESET}\n" "${SESSION_NAME:-(none)}"
         if [[ -n "$EXISTING_DESC" ]]; then
-            printf "Session description: ${C_YELLOW}%s${C_RESET}\n" "$EXISTING_DESC"
+            printf "💬 ${C_YELLOW}%s${C_RESET}\n" "$EXISTING_DESC"
         fi
     fi
 
     if [[ -n "$EXISTING_DESC" ]]; then
         add_session_to_log "$SESSION_ID" "$SESSION_NAME" "$PROJECT_DIR" "$EXISTING_DESC"
         if [[ "$PROMPT_FOR_CONTEXT" == "true" ]]; then
-            printf "${C_GREEN}✅ Session logged${C_RESET}  ${C_DIM}⚙️ change: claude -desc %s${C_RESET}\n" "$SESSION_ID"
+            printf "${C_DIM}⚙️ claude -desc %s${C_RESET}\n" "$SESSION_ID"
         fi
     else
         DESCRIPTION=""
@@ -163,10 +163,10 @@ if [[ -n "$RESUME_VALUE" ]]; then
             read -p "Enter session description (or press Enter to skip): " DESCRIPTION
         fi
         if [[ -z "$DESCRIPTION" ]]; then
-            [[ "$PROMPT_FOR_CONTEXT" == "true" ]] && printf "${C_DIM}⏭️  Session not logged (no description provided)${C_RESET}\n"
+            [[ "$PROMPT_FOR_CONTEXT" == "true" ]] && printf "${C_DIM}⏭️  Not logged (no description)${C_RESET}\n"
         else
             add_session_to_log "$SESSION_ID" "$SESSION_NAME" "$PROJECT_DIR" "$DESCRIPTION"
-            [[ "$PROMPT_FOR_CONTEXT" == "true" ]] && printf "${C_GREEN}✅ Session logged to %s${C_RESET}\n" "$LOG_FILE"
+            [[ "$PROMPT_FOR_CONTEXT" == "true" ]] && printf "${C_GREEN}✅ Logged${C_RESET}\n"
         fi
     fi
 fi
