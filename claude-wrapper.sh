@@ -140,13 +140,14 @@ if [[ -n "$RESUME_VALUE" ]]; then
     C_BOLD_CYAN=$'\033[1;36m'
     C_DIM=$'\033[2m'
     C_GREEN=$'\033[0;32m'
+    C_MAGENTA=$'\033[0;35m'
     C_YELLOW=$'\033[0;33m'
 
     if [[ "$PROMPT_FOR_CONTEXT" == "true" ]]; then
         echo ""
         printf "${C_DIM}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${C_RESET}\n"
         printf "📝 Session id: ${C_BOLD_CYAN}%s${C_RESET}\n" "$SESSION_ID"
-        printf "🏷️ Session alias: ${C_DIM}%s${C_RESET}\n" "${SESSION_NAME:-(none)}"
+        printf "🏷️ Session alias: ${C_MAGENTA}%s${C_RESET}\n" "${SESSION_NAME:-(none)}"
         if [[ -n "$EXISTING_DESC" ]]; then
             printf "💬 Session description: ${C_YELLOW}%s${C_RESET}\n" "$EXISTING_DESC"
         fi
