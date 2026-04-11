@@ -132,8 +132,9 @@ if [[ -n "$RESUME_VALUE" ]]; then
     IFS=$'\t' read -r EXISTING_DESC STORED_NAME < <(jq -r --arg session "$SESSION_ID" \
         '.[] | select(.session == $session) | [.description // "", .name // ""] | @tsv' \
         "$LOG_FILE" 2>/dev/null | head -1)
-    # Fall back to stored log name if transcript had no custom title
+    # Fall back to stored log name, then description, if transcript had no custom title
     [[ -z "$SESSION_NAME" && -n "$STORED_NAME" ]] && SESSION_NAME="$STORED_NAME"
+    [[ -z "$SESSION_NAME" && -n "$EXISTING_DESC" ]] && SESSION_NAME="$EXISTING_DESC"
 
     # ANSI color helpers (reset after each use to stay safe in all terminals)
     C_RESET='\033[0m'
