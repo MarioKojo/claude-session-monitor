@@ -451,7 +451,7 @@ status_sessions() {
         echo "❌ EXPIRED — ${#expired[@]} session(s) (transcript deleted by Claude)"
         for e in "${expired[@]}"; do
             local sid="${e%%|*}" desc="${e#*|}"
-            echo "   ${sid:0:8}…  ${desc:0:60}"
+            echo "   $sid  ${desc:0:55}"
         done
         echo "   → Run: cs archive"
     fi
@@ -468,7 +468,7 @@ status_sessions() {
             else
                 label="in ${days_left} days"
             fi
-            echo "   ${label}  ${sid:0:8}…  ${desc:0:55}"
+            echo "   ${label}  $sid  ${desc:0:45}"
         done < <(printf '%s\n' "${soon[@]}" | sort -t'|' -k1 -n)
     fi
 
