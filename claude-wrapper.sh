@@ -128,8 +128,12 @@ if [[ -n "$RESUME_VALUE" ]]; then
         [[ -n "$TRANSCRIPT_NAME" ]] && SESSION_NAME="$TRANSCRIPT_NAME"
     fi
 
-    # Look up existing description (used for display and fallback)
-    EXISTING_DESC=$(jq -r --arg session "$SESSION_ID" '.[] | select(.session == $session) | .description // empty' "$LOG_FILE" 2>/dev/null | head -1)
+    # Look up existing description and stored name (single jq pass)
+    read -r EXISTING_DESC STORED_NAME < <(jq -r --arg session "$SESSION_ID" \
+        '.[] | select(.session == $session) | [.description // "", .name // ""] | @tsv' \
+        "$LOG_FILE" 2>/dev/null | head -1)
+    # Fall back to stored log name if transcript had no custom title
+    [[ -z "$SESSION_NAME" && -n "$STORED_NAME" ]] && SESSION_NAME="$STORED_NAME"
 
     # ANSI color helpers (reset after each use to stay safe in all terminals)
     C_RESET='\033[0m'
