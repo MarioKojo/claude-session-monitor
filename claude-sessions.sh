@@ -32,6 +32,7 @@ Commands:
     add --scan       Browse unlogged sessions across all projects
     desc <session_id>  Update description for a session (also: claude -desc <id>)
     move <id> <path>  Move session to a different project directory
+    status [days]    Show expired and soon-to-expire sessions (default: 7-day window)
     archive          Move expired sessions (no transcript) to archive file
     backup, -b       Backup sessions to timestamped file
     clear            Clear all logged sessions (prompts for backup)
@@ -414,6 +415,67 @@ update_session_description() {
     rm -f "$lock_file"
 }
 
+status_sessions() {
+    local warn_days="${1:-7}"   # sessions expiring within N days (default 7)
+    if no_sessions; then
+        echo "No sessions logged yet."
+        return
+    fi
+
+    local now expired=() soon=() active=0
+    now=$(date +%s)
+
+    while IFS=$'\t' read -r sid desc ts; do
+        local transcript
+        transcript=$(find "$CLAUDE_PROJECTS_DIR" -name "${sid}.jsonl" -print -quit 2>/dev/null)
+
+        if [[ -z "$transcript" ]]; then
+            expired+=("$sid|$desc")
+        else
+            local age_d days_left
+            age_d=$(( (now - $(stat -f %m "$transcript" 2>/dev/null || stat -c %Y "$transcript" 2>/dev/null || echo "$now")) / 86400 ))
+            days_left=$(( 30 - age_d ))
+            if [[ $days_left -le $warn_days ]]; then
+                soon+=("${days_left}|$sid|$desc")
+            else
+                active=$((active + 1))
+            fi
+        fi
+    done < <(jq -r '.[] | [.session, (.description // ""), (.timestamp // "")] | @tsv' "$LOG_FILE")
+
+    echo "Session health check (${warn_days}-day warning window)"
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+
+    if [[ ${#expired[@]} -gt 0 ]]; then
+        echo ""
+        echo "❌ EXPIRED — ${#expired[@]} session(s) (transcript deleted by Claude)"
+        for e in "${expired[@]}"; do
+            local sid="${e%%|*}" desc="${e#*|}"
+            echo "   ${sid:0:8}…  ${desc:0:60}"
+        done
+        echo "   → Run: cs archive"
+    fi
+
+    if [[ ${#soon[@]} -gt 0 ]]; then
+        echo ""
+        echo "⚠️  EXPIRING SOON — ${#soon[@]} session(s)"
+        while IFS='|' read -r days_left sid desc; do
+            local label
+            if [[ "$days_left" -le 0 ]]; then
+                label="today"
+            elif [[ "$days_left" -eq 1 ]]; then
+                label="tomorrow"
+            else
+                label="in ${days_left} days"
+            fi
+            echo "   ${label}  ${sid:0:8}…  ${desc:0:55}"
+        done < <(printf '%s\n' "${soon[@]}" | sort -t'|' -k1 -n)
+    fi
+
+    echo ""
+    echo "✅ ACTIVE — ${active} session(s) safe for 7+ days"
+}
+
 move_session() {
     local session_id="$1"
     local new_project="${2/#\~/$HOME}"   # expand ~ if present
@@ -643,6 +705,9 @@ case "${1:-list}" in
         ;;
     move)
         move_session "$2" "$3"
+        ;;
+    status)
+        status_sessions "$2"
         ;;
     archive)
         archive_expired_sessions
