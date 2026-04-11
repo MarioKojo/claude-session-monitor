@@ -136,11 +136,11 @@ if [[ -n "$RESUME_VALUE" ]]; then
     [[ -z "$SESSION_NAME" && -n "$EXISTING_DESC" ]] && SESSION_NAME="$EXISTING_DESC"
 
     # ANSI color helpers (reset after each use to stay safe in all terminals)
-    C_RESET='\033[0m'
-    C_BOLD_CYAN='\033[1;36m'
-    C_DIM='\033[2m'
-    C_GREEN='\033[0;32m'
-    C_YELLOW='\033[0;33m'
+    C_RESET=$'\033[0m'
+    C_BOLD_CYAN=$'\033[1;36m'
+    C_DIM=$'\033[2m'
+    C_GREEN=$'\033[0;32m'
+    C_YELLOW=$'\033[0;33m'
 
     if [[ "$PROMPT_FOR_CONTEXT" == "true" ]]; then
         echo ""
