@@ -583,29 +583,34 @@ archive_expired_sessions() {
 
     echo "Scanning for expired sessions (no transcript in ~/.claude/projects/)..."
 
-    # Collect expired session IDs: those with no corresponding .jsonl transcript
+    # Collect expired sessions (id + description) — no corresponding .jsonl transcript
     local expired=()
-    while IFS= read -r sid; do
+    while IFS=$'\t' read -r sid desc; do
         if ! find "$CLAUDE_PROJECTS_DIR" -name "${sid}.jsonl" -print -quit 2>/dev/null | grep -q .; then
-            expired+=("$sid")
+            expired+=("$sid|$desc")
         fi
-    done < <(jq -r '.[].session' "$LOG_FILE")
+    done < <(jq -r '.[] | [.session, (.description // "")] | @tsv' "$LOG_FILE")
 
     if [[ ${#expired[@]} -eq 0 ]]; then
         echo "No expired sessions found — all sessions have active transcripts."
         return
     fi
 
-    echo "Found ${#expired[@]} expired session(s)."
-    read -p "Archive them to $ARCHIVE_FILE? [Y/n] " confirm
+    echo "${#expired[@]} expired session(s):"
+    echo ""
+    for e in "${expired[@]}"; do
+        echo "  ❌ ${e%%|*} — ${e#*|}"
+    done
+    echo ""
+    read -p "Archive to $ARCHIVE_FILE? [Y/n] " confirm
     if [[ "$confirm" =~ ^[Nn]$ ]]; then
         echo "Cancelled."
         return
     fi
 
-    # Build jq filter: array of IDs as a JSON array
+    # Build jq filter from IDs only (strip descriptions stored in expired array)
     local ids_json
-    ids_json=$(printf '%s\n' "${expired[@]}" | jq -R . | jq -s .)
+    ids_json=$(printf '%s\n' "${expired[@]}" | cut -d'|' -f1 | jq -R . | jq -s .)
 
     # Ensure archive file exists as a JSON array
     if [[ ! -s "$ARCHIVE_FILE" ]]; then
@@ -645,7 +650,8 @@ archive_expired_sessions() {
 
     # Clean up stale security_warnings_state_<uuid>.json files for archived sessions
     local cleaned=0
-    for sid in "${expired[@]}"; do
+    for e in "${expired[@]}"; do
+        local sid="${e%%|*}"
         local sw_file="${HOME}/.claude/security_warnings_state_${sid}.json"
         if [[ -f "$sw_file" ]]; then
             rm -f "$sw_file"
