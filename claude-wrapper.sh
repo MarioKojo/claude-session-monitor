@@ -52,10 +52,13 @@ else
     EXIT_CODE=$?
 fi
 
-# Let Claude's terminal UI finish flushing before we write our own output.
-# Without this, our echo lines interleave with Claude's final render frames.
-sleep 0.6
-printf '\n'
+# Claude's TUI renders a multi-column layout whose teardown continues writing
+# to the terminal after script exits. A fixed sleep is not reliable.
+# Instead: wait briefly, then jump the cursor to the bottom of the terminal
+# (row 9999 clips to the last visible row) and reset attributes. Our output
+# then starts below all of Claude's rendering with no interleaving.
+sleep 0.1
+printf '\033[9999;1H\033[0m\n'
 
 # Extract the resume value from the exit message (could be a UUID or a /rename name)
 # /fork produces multiple "Resume this session with:" lines — scan all, prefer first valid UUID,
