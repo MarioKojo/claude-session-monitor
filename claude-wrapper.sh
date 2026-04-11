@@ -52,6 +52,11 @@ else
     EXIT_CODE=$?
 fi
 
+# Let Claude's terminal UI finish flushing before we write our own output.
+# Without this, our echo lines interleave with Claude's final render frames.
+sleep 0.3
+printf '\n'
+
 # Extract the resume value from the exit message (could be a UUID or a /rename name)
 # /fork produces multiple "Resume this session with:" lines — scan all, prefer first valid UUID,
 # and skip strings containing [ ] which are terminal artifact text (not real session IDs).
