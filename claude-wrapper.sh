@@ -54,7 +54,7 @@ fi
 
 # Let Claude's terminal UI finish flushing before we write our own output.
 # Without this, our echo lines interleave with Claude's final render frames.
-sleep 0.3
+sleep 0.6
 printf '\n'
 
 # Extract the resume value from the exit message (could be a UUID or a /rename name)
