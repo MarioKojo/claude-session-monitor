@@ -128,10 +128,9 @@ if [[ -n "$RESUME_VALUE" ]]; then
         [[ -n "$TRANSCRIPT_NAME" ]] && SESSION_NAME="$TRANSCRIPT_NAME"
     fi
 
-    # Look up existing description and stored name (single jq pass)
-    IFS=$'\t' read -r EXISTING_DESC STORED_NAME < <(jq -r --arg session "$SESSION_ID" \
-        '.[] | select(.session == $session) | [.description // "", .name // ""] | @tsv' \
-        "$LOG_FILE" 2>/dev/null | head -1)
+    # Look up existing description and stored name (separate jq calls — avoids @tsv word-split)
+    EXISTING_DESC=$(jq -r --arg s "$SESSION_ID" '.[] | select(.session == $s) | .description // empty' "$LOG_FILE" 2>/dev/null | head -1)
+    STORED_NAME=$(jq -r --arg s "$SESSION_ID" '.[] | select(.session == $s) | .name // empty' "$LOG_FILE" 2>/dev/null | head -1)
     # Fall back to stored log name, then description, if transcript had no custom title
     [[ -z "$SESSION_NAME" && -n "$STORED_NAME" ]] && SESSION_NAME="$STORED_NAME"
     [[ -z "$SESSION_NAME" && -n "$EXISTING_DESC" ]] && SESSION_NAME="$EXISTING_DESC"
@@ -146,19 +145,17 @@ if [[ -n "$RESUME_VALUE" ]]; then
     if [[ "$PROMPT_FOR_CONTEXT" == "true" ]]; then
         echo ""
         printf "${C_DIM}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${C_RESET}\n"
-        if [[ -n "$SESSION_NAME" ]]; then
-            printf "📝 Session ended: ${C_BOLD_CYAN}%s${C_RESET} ${C_DIM}(%s)${C_RESET}\n" "$SESSION_ID" "$SESSION_NAME"
-        else
-            printf "📝 Session ended: ${C_BOLD_CYAN}%s${C_RESET}\n" "$SESSION_ID"
+        printf "Session id:          ${C_BOLD_CYAN}%s${C_RESET}\n" "$SESSION_ID"
+        printf "Session alias:       ${C_DIM}%s${C_RESET}\n" "${SESSION_NAME:-(none)}"
+        if [[ -n "$EXISTING_DESC" ]]; then
+            printf "Session description: ${C_YELLOW}%s${C_RESET}\n" "$EXISTING_DESC"
         fi
     fi
 
     if [[ -n "$EXISTING_DESC" ]]; then
         add_session_to_log "$SESSION_ID" "$SESSION_NAME" "$PROJECT_DIR" "$EXISTING_DESC"
         if [[ "$PROMPT_FOR_CONTEXT" == "true" ]]; then
-            printf "${C_GREEN}✅ Session logged to %s${C_RESET}\n" "$LOG_FILE"
-            printf "📋 Description: ${C_YELLOW}%s${C_RESET}\n" "$EXISTING_DESC"
-            printf "${C_DIM}⚙️ Change description: claude -desc %s${C_RESET}\n" "$SESSION_ID"
+            printf "${C_GREEN}✅ Session logged${C_RESET}  ${C_DIM}⚙️ change: claude -desc %s${C_RESET}\n" "$SESSION_ID"
         fi
     else
         DESCRIPTION=""
