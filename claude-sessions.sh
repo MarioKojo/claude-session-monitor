@@ -91,19 +91,16 @@ resume_session() {
         return 1
     fi
 
-    local session_data
-    if [[ "$arg" =~ $UUID_REGEX ]]; then
-        # Resume by UUID
-        session_data=$(jq -r --arg sid "$arg" '.[] | select(.session == $sid) | [.session, .session_name // "", .project // ""] | @tsv' "$LOG_FILE" | tail -1)
-    else
-        # Resume by position (1 = most recent)
-        session_data=$(jq -r --argjson n "$arg" '.[-$n] | [.session, .session_name // "", .project // ""] | @tsv' "$LOG_FILE")
-    fi
-
     local session_id display_name project_dir
-    session_id=$(echo "$session_data" | cut -f1)
-    display_name=$(echo "$session_data" | cut -f2)
-    project_dir=$(echo "$session_data" | cut -f3)
+    if [[ "$arg" =~ $UUID_REGEX ]]; then
+        session_id=$arg
+        display_name=$(jq -r --arg sid "$arg" '.[] | select(.session == $sid) | .session_name // ""' "$LOG_FILE" | tail -1)
+        project_dir=$(jq -r --arg sid "$arg" '.[] | select(.session == $sid) | .project // ""' "$LOG_FILE" | tail -1)
+    else
+        session_id=$(jq -r --argjson n "$arg" '.[-$n] | .session // ""' "$LOG_FILE")
+        display_name=$(jq -r --argjson n "$arg" '.[-$n] | .session_name // ""' "$LOG_FILE")
+        project_dir=$(jq -r --argjson n "$arg" '.[-$n] | .project // ""' "$LOG_FILE")
+    fi
 
     if [[ -z "$session_id" ]] || [[ "$session_id" == "null" ]]; then
         if [[ "$arg" =~ $UUID_REGEX ]]; then
@@ -549,11 +546,15 @@ move_session() {
         sleep 0.1
     done
 
-    jq --arg s "$session_id" --arg p "$new_project" \
+    if jq --arg s "$session_id" --arg p "$new_project" \
         'map(if .session == $s then .project = $p else . end)' \
-        "$LOG_FILE" > "$tmp" && mv "$tmp" "$LOG_FILE"
+        "$LOG_FILE" > "$tmp" && mv "$tmp" "$LOG_FILE"; then
+        echo "✅ Session log updated"
+    else
+        rm -f "$tmp"
+        echo "❌ Failed to update session log"
+    fi
     rm -f "$lock_file"
-    echo "✅ Session log updated"
 
     # 3. Append a corrected entry to history.jsonl so 'claude --resume' resolves the right dir
     #    history.jsonl is append-only; Claude uses the last entry per sessionId as the source of truth
