@@ -562,7 +562,7 @@ move_session() {
         existing_line=$(grep "\"$session_id\"" "$CLAUDE_HISTORY" | tail -1)
         if [[ -n "$existing_line" ]]; then
             echo "$existing_line" \
-                | jq --arg p "$new_project" --argjson ts "$(date +%s%3N)" \
+                | jq --arg p "$new_project" --argjson ts "$(( $(date +%s) * 1000 ))" \
                       '.project = $p | .timestamp = $ts' \
                 >> "$CLAUDE_HISTORY"
             echo "✅ history.jsonl updated (appended correction)"
