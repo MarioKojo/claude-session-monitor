@@ -112,7 +112,7 @@ if [[ -n "$RESUME_VALUE" ]]; then
     # Look up the project directory from Claude's history
     PROJECT_DIR=""
     if [[ -f "$CLAUDE_HISTORY" ]]; then
-        PROJECT_DIR=$(jq -r --arg sid "$SESSION_ID" 'select(.sessionId == $sid) | .project // empty' "$CLAUDE_HISTORY" 2>/dev/null | head -1)
+        PROJECT_DIR=$(jq -r --arg sid "$SESSION_ID" 'select(.sessionId == $sid) | .project // empty' "$CLAUDE_HISTORY" 2>/dev/null | tail -1)
     fi
 
     # Update PROJECT_KEY if project dir differs from cwd
