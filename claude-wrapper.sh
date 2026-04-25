@@ -40,6 +40,32 @@ fi
 # Ensure log file exists
 touch "$LOG_FILE"
 
+# When resuming an existing session, skip script() wrapping entirely.
+# Claude Code 2.1.120+ crashes inside a script() PTY during --resume because the
+# pseudo-TTY's terminal capability profile triggers an internal code path that calls
+# onSessionRestored — a hook that was removed/renamed in this version of the bundle.
+# For --resume, the session ID is already known as the argument after --resume, so
+# we run the binary directly and skip the output-capture step entirely. Post-session
+# logging still runs using the known ID extracted from the arguments.
+RESUME_VALUE=""
+SKIP_SCRIPT=false
+args=("$@")
+for i in "${!args[@]}"; do
+    if [[ "${args[$i]}" == "--resume" ]]; then
+        SKIP_SCRIPT=true
+        next=$((i + 1))
+        RESUME_VALUE="${args[$next]}"
+        break
+    fi
+done
+
+if [[ "$SKIP_SCRIPT" == "true" ]]; then
+    "$REAL_CLAUDE" "$@"
+    EXIT_CODE=$?
+    sleep 0.1
+    printf '\033[9999;1H\033[0m\n'
+else
+
 TEMP_OUTPUT=$(mktemp)
 trap 'rm -f "$TEMP_OUTPUT"' EXIT
 
@@ -81,6 +107,8 @@ done < <(grep -A1 "Resume this session with:" "$TEMP_OUTPUT" \
 
 rm -f "$TEMP_OUTPUT"
 trap - EXIT
+
+fi  # end of SKIP_SCRIPT branch
 
 if [[ -n "$RESUME_VALUE" ]]; then
     PROJECT_KEY=$(pwd | sed 's|/|-|g')

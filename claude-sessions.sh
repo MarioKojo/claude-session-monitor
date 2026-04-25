@@ -514,7 +514,7 @@ move_session() {
     echo "From:     ${current_project:-(unknown)}"
     echo "To:       $new_project"
     read -p "Confirm move? [Y/n] " confirm
-    [[ "$confirm" =~ ^[Nn]$ ]] && echo "Cancelled." && return
+    [[ ! "$confirm" =~ ^[Yy]$ && -n "$confirm" ]] && echo "Cancelled." && return
 
     # 1. Move transcript file (if it exists)
     local old_key new_key
@@ -604,7 +604,7 @@ archive_expired_sessions() {
     done
     echo ""
     read -p "Archive to $ARCHIVE_FILE? [Y/n] " confirm
-    if [[ "$confirm" =~ ^[Nn]$ ]]; then
+    if [[ ! "$confirm" =~ ^[Yy]$ && -n "$confirm" ]]; then
         echo "Cancelled."
         return
     fi
