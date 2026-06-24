@@ -69,6 +69,9 @@ else
 TEMP_OUTPUT=$(mktemp)
 trap 'rm -f "$TEMP_OUTPUT"' EXIT
 
+# Capture start time for history.jsonl fallback (must be before script invocation)
+START_EPOCH=$(date +%s)
+
 # Run claude with script to capture output while preserving TTY
 if [[ "$OSTYPE" == "darwin"* ]]; then
     script -q "$TEMP_OUTPUT" "$REAL_CLAUDE" "$@"
@@ -86,8 +89,10 @@ fi
 sleep 0.1
 printf '\033[9999;1H\033[0m\n'
 
-# Extract the resume value from the exit message (could be a UUID or a /rename name)
-# /fork produces multiple "Resume this session with:" lines — scan all, prefer first valid UUID,
+# Extract the resume value from the exit message (could be a UUID or a /rename name).
+# Match --resume directly on the same line to avoid fullscreen TUI escape sequences
+# (e.g. \x1b[I focus events) that grep -A1 would grab instead of the UUID line.
+# /fork produces multiple --resume occurrences — scan all, prefer first valid UUID,
 # and skip strings containing [ ] which are terminal artifact text (not real session IDs).
 RESUME_VALUE=""
 while IFS= read -r resume_line; do
@@ -102,8 +107,16 @@ while IFS= read -r resume_line; do
     elif [[ -z "$RESUME_VALUE" && ${#VAL} -lt 100 ]]; then
         RESUME_VALUE="$VAL"                     # plausible /rename name as fallback
     fi
-done < <(grep -A1 "Resume this session with:" "$TEMP_OUTPUT" \
-         | grep -v "Resume this session with:" | grep -v "^--$")
+done < <(grep -o -- '--resume [^[:space:]]*' "$TEMP_OUTPUT" \
+         | sed 's/--resume //')
+
+# history.jsonl fallback: if output parsing yielded nothing, look for a session
+# that started at or after START_EPOCH in the current project directory.
+if [[ -z "$RESUME_VALUE" && -f "$CLAUDE_HISTORY" ]]; then
+    RESUME_VALUE=$(jq -r --arg proj "$(pwd)" --argjson ts "$((START_EPOCH*1000))" \
+      'select(.project == $proj and .timestamp >= $ts) | .sessionId' \
+      "$CLAUDE_HISTORY" 2>/dev/null | tail -1)
+fi
 
 rm -f "$TEMP_OUTPUT"
 trap - EXIT
