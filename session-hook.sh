@@ -36,61 +36,74 @@ if [[ -z "$SESSION_ID" ]]; then
     exit 0
 fi
 
-# Idempotency: if this session is already logged with a description, do nothing.
+# Always locate the MAIN session transcript (session_id.jsonl) for description extraction.
+# transcript_path from the payload may point to a subagent transcript
+# (e.g. .../subagents/agent-xyz.jsonl) which never contains a customTitle.
+# Using the main transcript ensures /rename aliases are always found.
+MAIN_TRANSCRIPT=""
+for dir in "${CLAUDE_PROJECTS_DIR}"/*/; do
+    if [[ -f "${dir}${SESSION_ID}.jsonl" ]]; then
+        MAIN_TRANSCRIPT="${dir}${SESSION_ID}.jsonl"
+        break
+    fi
+done
+
+# Fall back to the payload path only when no main transcript is found yet
+# (e.g. transcript not yet flushed to disk — rare but possible).
+[[ -z "$MAIN_TRANSCRIPT" && -f "$TRANSCRIPT_PATH" ]] && MAIN_TRANSCRIPT="$TRANSCRIPT_PATH"
+
+_debug "resolved main_transcript=$MAIN_TRANSCRIPT"
+
+# Extract customTitle from main transcript now — needed for the idempotency check.
+SESSION_NAME=""
+if [[ -f "$MAIN_TRANSCRIPT" ]]; then
+    SESSION_NAME=$(jq -r 'select(has("customTitle")) | .customTitle' \
+        "$MAIN_TRANSCRIPT" 2>/dev/null | tail -1)
+    _debug "customTitle from transcript: $SESSION_NAME"
+fi
+
+# Idempotency: skip only when the session is already logged AND the stored description
+# already reflects the current alias (customTitle). If an alias is now available but the
+# stored description predates the rename, fall through so we write the correct alias.
 if [[ -s "$LOG_FILE" ]]; then
     EXISTING_DESC=$(jq -r --arg s "$SESSION_ID" \
         '.[] | select(.session == $s) | .description // empty' \
         "$LOG_FILE" 2>/dev/null | head -1)
     if [[ -n "$EXISTING_DESC" ]]; then
-        _debug "session already logged with description, skipping"
-        exit 0
+        # If no alias is known, any existing description is good enough — skip.
+        # If an alias is known, skip only when the stored description already matches it.
+        if [[ -z "$SESSION_NAME" || "$EXISTING_DESC" == "$SESSION_NAME" ]]; then
+            _debug "session already logged correctly, skipping"
+            exit 0
+        fi
+        _debug "alias changed since last log (stored='$EXISTING_DESC' alias='$SESSION_NAME'), re-logging"
     fi
 fi
 
-# Locate transcript if not provided (or path is empty/missing)
-if [[ -z "$TRANSCRIPT_PATH" || ! -f "$TRANSCRIPT_PATH" ]]; then
-    # Fall back: search all project dirs
-    for dir in "${CLAUDE_PROJECTS_DIR}"/*/; do
-        if [[ -f "${dir}${SESSION_ID}.jsonl" ]]; then
-            TRANSCRIPT_PATH="${dir}${SESSION_ID}.jsonl"
-            break
-        fi
-    done
-fi
-
-_debug "resolved transcript=$TRANSCRIPT_PATH"
-
 # Derive description (priority: customTitle > first user message > session_id)
 DESCRIPTION=""
-SESSION_NAME=""
 
-if [[ -f "$TRANSCRIPT_PATH" ]]; then
-    # Priority 1: customTitle (reuse same jq from get_custom_title)
-    SESSION_NAME=$(jq -r 'select(has("customTitle")) | .customTitle' \
-        "$TRANSCRIPT_PATH" 2>/dev/null | tail -1)
+if [[ -n "$SESSION_NAME" ]]; then
+    DESCRIPTION="$SESSION_NAME"
+    _debug "description from customTitle: $DESCRIPTION"
+elif [[ -f "$MAIN_TRANSCRIPT" ]]; then
+    # Priority 2: first user message text (strip newlines, truncate)
+    FIRST_MSG=$(jq -r '
+        select(.type == "user" and .message != null) |
+        if (.message | type) == "string" then .message
+        elif (.message.content | type) == "string" then .message.content
+        elif (.message.content | type) == "array" then
+            (first(.message.content[] |
+             select(type == "string" or .type == "text") |
+             if type == "string" then . else .text end)) // empty
+        else empty end
+    ' "$MAIN_TRANSCRIPT" 2>/dev/null | head -1)
 
-    if [[ -n "$SESSION_NAME" ]]; then
-        DESCRIPTION="$SESSION_NAME"
-        _debug "description from customTitle: $DESCRIPTION"
-    else
-        # Priority 2: first user message text (strip newlines, truncate)
-        FIRST_MSG=$(jq -r '
-            select(.type == "user" and .message != null) |
-            if (.message | type) == "string" then .message
-            elif (.message.content | type) == "string" then .message.content
-            elif (.message.content | type) == "array" then
-                (first(.message.content[] |
-                 select(type == "string" or .type == "text") |
-                 if type == "string" then . else .text end)) // empty
-            else empty end
-        ' "$TRANSCRIPT_PATH" 2>/dev/null | head -1)
-
-        if [[ -n "$FIRST_MSG" ]]; then
-            # Collapse whitespace and newlines, truncate to 80 chars
-            DESCRIPTION=$(printf '%s' "$FIRST_MSG" | tr '\n\r\t' ' ' | sed 's/  */ /g')
-            DESCRIPTION="${DESCRIPTION:0:80}"
-            _debug "description from first user message: $DESCRIPTION"
-        fi
+    if [[ -n "$FIRST_MSG" ]]; then
+        # Collapse whitespace and newlines, truncate to 80 chars
+        DESCRIPTION=$(printf '%s' "$FIRST_MSG" | tr '\n\r\t' ' ' | sed 's/  */ /g')
+        DESCRIPTION="${DESCRIPTION:0:80}"
+        _debug "description from first user message: $DESCRIPTION"
     fi
 fi
 
