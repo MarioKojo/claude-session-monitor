@@ -30,7 +30,7 @@ Commands:
     resume, -r <n|uuid>  Resume by position (1 = most recent) or session UUID
     add, -a [id]     Add session manually (browse unlogged or by UUID)
     add --scan       Browse unlogged sessions across all projects
-    desc <session_id>  Update description for a session (also: claude -desc <id>)
+    desc <session_id> [desc]  Update description for a session
     move <id> <path>  Move session to a different project directory
     status [days]    Show expired and soon-to-expire sessions (default: 7-day window)
     archive          Move expired sessions (no transcript) to archive file
@@ -353,8 +353,9 @@ add_session() {
 
 update_session_description() {
     local session_id="$1"
+    local inline_desc="$2"   # optional: skip interactive prompt when provided
     if [[ -z "$session_id" ]]; then
-        echo "Usage: cs desc <session_id>"
+        echo "Usage: cs desc <session_id> [description]"
         return 1
     fi
     if no_sessions; then
@@ -383,7 +384,12 @@ update_session_description() {
     fi
     [[ -n "$current_desc" ]] && echo "📋 Current description: $current_desc"
 
-    read -p "New description: " new_desc
+    local new_desc
+    if [[ -n "$inline_desc" ]]; then
+        new_desc="$inline_desc"
+    else
+        read -p "New description: " new_desc
+    fi
     if [[ -z "$new_desc" ]]; then
         echo "No change."
         return 0
@@ -707,8 +713,8 @@ case "${1:-list}" in
     add|-a)
         add_session "$2"
         ;;
-    desc)
-        update_session_description "$2"
+    desc|-desc|--desc)
+        update_session_description "$2" "$3"
         ;;
     move)
         move_session "$2" "$3"

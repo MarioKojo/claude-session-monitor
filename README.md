@@ -76,7 +76,7 @@ Enter session description (or press Enter to skip): Planning k8s 1.33 upgrade
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 📝 Session ended: The Ansible (e1cea1a6-bf61-4182-8d77-5e90ac438f43)
 📋 Existing description: The Ansible Team configuration
-⚙️  Change description: claude -desc e1cea1a6-bf61-4182-8d77-5e90ac438f43
+⚙️  Change description: cs -desc e1cea1a6-bf61-4182-8d77-5e90ac438f43
 ✅ Session logged to ~/.claude-sessions.log
 ```
 
@@ -107,7 +107,8 @@ cs add --scan               # browse all projects
 cs add <uuid>               # add a specific session by UUID
 
 # Update a session's description
-cs desc <uuid>              # or: claude -desc <uuid>
+cs desc <uuid>              # or: cs -desc <uuid>
+cs -desc <uuid> "new text"  # inline: set description without prompting
 
 # Move a session to a different project directory
 cs move <uuid> ~/Documents/GitHub/kojo-ansible

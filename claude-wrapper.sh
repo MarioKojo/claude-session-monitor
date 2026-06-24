@@ -14,7 +14,7 @@ eval "$(sed '/^# Main command dispatcher$/,$d' "$SCRIPT_DIR/claude-sessions.sh")
 # Handle description update command (intercepts before launching claude)
 if [[ "$1" == "-desc" || "$1" == "--desc" ]]; then
     if [[ -z "$2" ]]; then
-        echo "Usage: claude -desc <session_id>"
+        echo "Usage: cs -desc <session_id> [description]"
         exit 1
     fi
     update_session_description "$2"
@@ -246,7 +246,7 @@ if [[ -n "$RESUME_VALUE" ]]; then
     if [[ -n "$EXISTING_DESC" ]]; then
         add_session_to_log "$SESSION_ID" "$SESSION_NAME" "$PROJECT_DIR" "$EXISTING_DESC"
         if [[ "$PROMPT_FOR_CONTEXT" == "true" ]]; then
-            printf "${C_DIM}⚙️ claude -desc %s${C_RESET}\n" "$SESSION_ID"
+            printf "${C_DIM}⚙️ cs -desc %s${C_RESET}\n" "$SESSION_ID"
         fi
     else
         DESCRIPTION=""
