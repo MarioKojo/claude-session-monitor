@@ -21,10 +21,50 @@ if [[ "$1" == "-desc" || "$1" == "--desc" ]]; then
     exit $?
 fi
 
-# Find the real claude binary (not this wrapper)
-REAL_CLAUDE=$(which -a claude | grep -v claude-wrapper | head -1)
+# Re-entry guard: if we're already inside the wrapper (set below before exec),
+# exec the binary directly using argv[0] bypass logic won't loop back here.
+if [[ -n "$_CLAUDE_WRAPPER_ACTIVE" ]]; then
+    # We are being re-entered. Find a real binary via the hardcoded fallback list
+    # and exec it without any further wrapping.
+    for _loc in /opt/homebrew/bin/claude /usr/local/bin/claude "$HOME/.local/bin/claude" \
+                "$HOME/.claude/bin/claude"; do
+        if [[ -x "$_loc" ]]; then
+            exec "$_loc" "$@"
+        fi
+    done
+    echo "claude-wrapper: re-entry detected but no fallback binary found" >&2
+    exit 1
+fi
+
+# Resolve the canonical path of this wrapper so we can exclude it from `which -a`.
+_WRAPPER_REAL=$(realpath "$0" 2>/dev/null || readlink -f "$0" 2>/dev/null || echo "$0")
+
+# Find the real claude binary — exclude:
+#   1. This wrapper itself (by canonical path match)
+#   2. Any cmux shim              (*/cmux-cli-shims/*)
+#   3. cmux bundled claude paths  (*/cmux*/*/bin/claude, *cmux-claude-wrapper*, */cmux.app/*, */Contents/Resources/bin/claude)
+#   4. Any path containing "claude-wrapper" (legacy guard)
+REAL_CLAUDE=""
+while IFS= read -r candidate; do
+    [[ -z "$candidate" ]] && continue
+    _cand_real=$(realpath "$candidate" 2>/dev/null || readlink -f "$candidate" 2>/dev/null || echo "$candidate")
+    # Skip if same file as this wrapper
+    [[ "$_cand_real" == "$_WRAPPER_REAL" ]] && continue
+    # Skip cmux shims and bundled wrappers
+    [[ "$candidate" == */cmux-cli-shims/* ]] && continue
+    [[ "$candidate" == */cmux*/*/bin/claude ]] && continue
+    [[ "$candidate" == *cmux-claude-wrapper* ]] && continue
+    [[ "$candidate" == */cmux.app/* ]] && continue
+    [[ "$candidate" == */Contents/Resources/bin/claude ]] && continue
+    # Legacy guard
+    [[ "$candidate" == *claude-wrapper* ]] && continue
+    REAL_CLAUDE="$candidate"
+    break
+done < <(which -a claude 2>/dev/null)
+
 if [[ -z "$REAL_CLAUDE" ]]; then
-    for loc in /usr/local/bin/claude "$HOME/.claude/bin/claude" "$HOME/.local/bin/claude"; do
+    for loc in /opt/homebrew/bin/claude /usr/local/bin/claude \
+               "$HOME/.local/bin/claude" "$HOME/.claude/bin/claude"; do
         if [[ -x "$loc" ]]; then
             REAL_CLAUDE="$loc"
             break
@@ -33,9 +73,18 @@ if [[ -z "$REAL_CLAUDE" ]]; then
 fi
 
 if [[ -z "$REAL_CLAUDE" ]]; then
-    echo "Error: Could not find claude binary"
+    echo "Error: Could not find claude binary" >&2
     exit 1
 fi
+
+# Safety: refuse to exec if the resolved binary is the same file as this wrapper.
+_real_claude_real=$(realpath "$REAL_CLAUDE" 2>/dev/null || readlink -f "$REAL_CLAUDE" 2>/dev/null || echo "$REAL_CLAUDE")
+if [[ "$_real_claude_real" == "$_WRAPPER_REAL" ]]; then
+    echo "claude-wrapper: REAL_CLAUDE resolved to self ($REAL_CLAUDE) — aborting to prevent recursion" >&2
+    exit 1
+fi
+
+export _CLAUDE_WRAPPER_ACTIVE=1
 
 # Ensure log file exists
 touch "$LOG_FILE"
