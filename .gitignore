@@ -2,3 +2,6 @@
 claude-sessions
 claude-wrapper
 cs
+
+# macOS metadata
+.DS_Store
