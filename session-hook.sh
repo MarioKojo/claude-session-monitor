@@ -129,5 +129,40 @@ add_session_to_log "$SESSION_ID" "$SESSION_NAME" "$PROJECT_DIR" "$DESCRIPTION" 2
     _debug "add_session_to_log failed"
 }
 
+# Info-only exit banner — mirrors the wrapper's banner, printed to the controlling
+# terminal so it remains visible under cmux where stdout is captured/discarded.
+# Gated to prompt_input_exit (real /exit) only; skips on "other" (window-close) to
+# avoid double-fire on the close+reopen+exit sequence observed under cmux.
+# CLAUDE_HOOK_TTY overrides /dev/tty for test capture; set externally by tests only.
+# For /dev/tty (production path) we guard with -w; for the test-seam override we
+# always attempt the write (the file may not exist yet when the check runs).
+_HOOK_TTY="${CLAUDE_HOOK_TTY:-/dev/tty}"
+_tty_ok=false
+if [[ -n "${CLAUDE_HOOK_TTY:-}" ]]; then
+    _tty_ok=true  # test seam: always attempt, let the redirect swallow errors
+elif ( exec >>"$_HOOK_TTY" ) 2>/dev/null; then
+    _tty_ok=true
+fi
+if [[ "$REASON" == "prompt_input_exit" ]] && [[ "$_tty_ok" == "true" ]]; then
+    C_RESET=$'\033[0m'
+    C_BOLD_CYAN=$'\033[1;36m'
+    C_DIM=$'\033[2m'
+    C_MAGENTA=$'\033[0;35m'
+    C_YELLOW=$'\033[0;33m'
+    {
+        printf '\n'
+        printf "${C_DIM}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${C_RESET}\n"
+        printf "📝 Session id: ${C_BOLD_CYAN}%s${C_RESET}\n" "$SESSION_ID"
+        printf "🏷️ Session alias: ${C_MAGENTA}%s${C_RESET}\n" "${SESSION_NAME:-(none)}"
+        if [[ -n "$DESCRIPTION" && "$DESCRIPTION" != "$SESSION_ID" ]]; then
+            printf "💬 Session description: ${C_YELLOW}%s${C_RESET}\n" "$DESCRIPTION"
+        fi
+        printf "${C_DIM}⚙️ cs -desc %s${C_RESET}\n" "$SESSION_ID"
+    } > "$_HOOK_TTY" 2>/dev/null || true
+    _debug "banner printed to $_HOOK_TTY"
+else
+    _debug "banner skipped (reason=$REASON tty_ok=$_tty_ok)"
+fi
+
 _debug "done"
 exit 0
