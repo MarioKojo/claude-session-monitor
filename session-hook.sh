@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# Claude Code Stop hook — headless session logging
+# Claude Code SessionEnd hook — headless session logging
 # Receives JSON on stdin; derives description without any interactive prompts.
 # Exit 0 always to avoid disrupting Claude.
 
@@ -27,8 +27,9 @@ HOOK_INPUT=$(cat)
 # Extract fields from hook payload
 SESSION_ID=$(printf '%s' "$HOOK_INPUT" | jq -r '.session_id // empty' 2>/dev/null)
 TRANSCRIPT_PATH=$(printf '%s' "$HOOK_INPUT" | jq -r '.transcript_path // empty' 2>/dev/null)
+REASON=$(printf '%s' "$HOOK_INPUT" | jq -r '.reason // empty' 2>/dev/null)
 
-_debug "session_id=$SESSION_ID transcript_path=$TRANSCRIPT_PATH"
+_debug "session_id=$SESSION_ID reason=$REASON transcript_path=$TRANSCRIPT_PATH"
 
 # Bail out if no session_id — nothing to log
 if [[ -z "$SESSION_ID" ]]; then
@@ -36,10 +37,9 @@ if [[ -z "$SESSION_ID" ]]; then
     exit 0
 fi
 
-# Always locate the MAIN session transcript (session_id.jsonl) for description extraction.
-# transcript_path from the payload may point to a subagent transcript
-# (e.g. .../subagents/agent-xyz.jsonl) which never contains a customTitle.
-# Using the main transcript ensures /rename aliases are always found.
+# Locate the MAIN session transcript (session_id.jsonl) for description extraction.
+# SessionEnd always provides transcript_path pointing to the main transcript;
+# scan all project dirs first as a belt-and-suspenders check (handles flush lag).
 MAIN_TRANSCRIPT=""
 for dir in "${CLAUDE_PROJECTS_DIR}"/*/; do
     if [[ -f "${dir}${SESSION_ID}.jsonl" ]]; then
@@ -113,9 +113,10 @@ if [[ -z "$DESCRIPTION" ]]; then
     _debug "description fallback to session_id"
 fi
 
-# Look up project_dir from history.jsonl
-PROJECT_DIR=""
-if [[ -f "$CLAUDE_HISTORY" ]]; then
+# Derive project_dir: SessionEnd payload has cwd directly — use that first.
+# Fall back to history.jsonl lookup only when cwd is absent.
+PROJECT_DIR=$(printf '%s' "$HOOK_INPUT" | jq -r '.cwd // empty' 2>/dev/null)
+if [[ -z "$PROJECT_DIR" && -f "$CLAUDE_HISTORY" ]]; then
     PROJECT_DIR=$(jq -r --arg sid "$SESSION_ID" \
         'select(.sessionId == $sid) | .project // empty' \
         "$CLAUDE_HISTORY" 2>/dev/null | tail -1)
